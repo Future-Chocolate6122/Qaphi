@@ -2,6 +2,11 @@
 // (modernc.org/sqlite, sin CGO).
 //
 // Decisiones pensadas para almacenamiento delicado (microSD) y poca RAM:
+//   - locking_mode=EXCLUSIVE: la conexión retiene el bloqueo del fichero
+//     mientras el proceso vive, de modo que ningún otro proceso puede usar la
+//     base de datos a la vez (garantía de instancia única por directorio de
+//     datos). Además, en WAL exclusivo SQLite no usa memoria compartida y no
+//     crea el fichero -shm;
 //   - modo WAL: las escrituras son secuenciales y no bloquean las lecturas;
 //   - synchronous=FULL: cada transacción confirmada sobrevive a un corte de
 //     luz. Se escribe poco (ajustes al momento, resultados en lote), así que
@@ -69,10 +74,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 // conexión nueva.
 func dsn(path string) string {
 	q := url.Values{}
+	// El orden importa: locking_mode debe fijarse antes del primer acceso en
+	// modo WAL para que SQLite no use memoria compartida.
 	for _, p := range []string{
+		"locking_mode(EXCLUSIVE)",
+		fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()),
 		"journal_mode(WAL)",
 		"synchronous(FULL)",
-		fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()),
 		"foreign_keys(ON)",
 		fmt.Sprintf("cache_size(-%d)", cacheSizeKiB), // negativo = KiB
 		"temp_store(MEMORY)",
@@ -84,19 +92,39 @@ func dsn(path string) string {
 
 func (s *Store) init(ctx context.Context) error {
 	if err := s.db.PingContext(ctx); err != nil {
-		return fmt.Errorf("abrir %s: %w", s.path, err)
+		return fmt.Errorf("abrir %s: %w", s.path, wrapLocked(err))
 	}
 	var mode string
 	if err := s.db.QueryRowContext(ctx, `PRAGMA journal_mode`).Scan(&mode); err != nil {
-		return fmt.Errorf("comprobar modo de diario: %w", err)
+		return fmt.Errorf("comprobar modo de diario: %w", wrapLocked(err))
 	}
 	if !strings.EqualFold(mode, "wal") {
 		return fmt.Errorf("no se pudo activar el modo WAL en %s (modo actual: %s); ¿está el directorio de datos en un sistema de ficheros de red?", s.path, mode)
 	}
+	// Una escritura (aunque no cambie nada) obliga a tomar ya el bloqueo
+	// exclusivo de escritura, en lugar de esperar a la primera escritura real.
+	if _, err := s.db.ExecContext(ctx, `BEGIN IMMEDIATE; COMMIT`); err != nil {
+		return fmt.Errorf("bloquear %s: %w", s.path, wrapLocked(err))
+	}
 	if _, err := migrate(ctx, s.db, embeddedMigrations); err != nil {
-		return err
+		return wrapLocked(err)
 	}
 	return nil
+}
+
+// wrapLocked traduce los errores de bloqueo de SQLite a store.ErrLocked.
+func wrapLocked(err error) error {
+	var coder interface{ Code() int }
+	if errors.As(err, &coder) {
+		switch coder.Code() & 0xff { // código primario
+		case 5, 6: // SQLITE_BUSY, SQLITE_LOCKED
+			return fmt.Errorf("%w: %v", store.ErrLocked, err)
+		}
+	}
+	if err != nil && strings.Contains(err.Error(), "database is locked") {
+		return fmt.Errorf("%w: %v", store.ErrLocked, err)
+	}
+	return err
 }
 
 // Path devuelve la ruta del fichero de base de datos.

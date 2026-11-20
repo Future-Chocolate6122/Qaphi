@@ -6,6 +6,9 @@
 #   make size       muestra el tamaño de los binarios de dist/
 #   make clean      borra bin/ y dist/
 #
+# Versiones: se publican con una etiqueta semver, p. ej.
+#   git tag -a v0.2.0 -m "Qaphi v0.2.0" && make cross
+#
 # Todos los binarios se compilan sin CGO, con -trimpath y sin símbolos de
 # depuración (-s -w).
 
@@ -14,7 +17,10 @@ PKG     := ./cmd/qaphi
 BIN_DIR := bin
 DIST    := dist
 
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# Versión: etiqueta semver del commit (v0.1.0…). Sin etiqueta exacta, o con
+# cambios sin confirmar, git describe da algo como v0.1.0-3-gabc123[-dirty],
+# que Qaphi trata como compilación de desarrollo («dev»).
+VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null)
 # Fecha del último commit (no la hora de compilación) para builds reproducibles.
 DATE    ?= $(shell git log -1 --format=%cI 2>/dev/null)

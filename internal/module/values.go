@@ -37,16 +37,18 @@ func (e Errors) Error() string {
 }
 
 // Normalize valida la entrada contra los campos declarados y devuelve los
-// valores en forma canónica. Las claves no declaradas se descartan, los
-// campos vacíos toman su valor por defecto y los booleanos ausentes valen
-// "false" (una casilla sin marcar no se envía en un formulario HTML).
-// Si hay errores, se devuelven todos juntos.
+// valores en forma canónica. Las claves no declaradas se descartan y los
+// campos vacíos o ausentes toman su valor por defecto (los booleanos sin
+// valor por defecto valen "false"). Los formularios HTML envían un campo
+// oculto "false" antes de cada casilla, de modo que una casilla desmarcada
+// llega como "false" y no como ausente. Si hay errores, se devuelven todos
+// juntos.
 func (info Info) Normalize(in Values) (Values, Errors) {
 	out := make(Values, len(info.Fields))
 	errs := Errors{}
 	for _, f := range info.Fields {
-		raw, present := in[f.Key]
-		if f.Type == Bool && !present {
+		raw := in[f.Key]
+		if f.Type == Bool && strings.TrimSpace(raw) == "" && f.Default == "" {
 			out[f.Key] = "false"
 			continue
 		}

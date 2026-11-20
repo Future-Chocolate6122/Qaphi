@@ -5,18 +5,61 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>{{block "title" .}}{{t "app.name"}}{{end}}</title>
+<meta name="referrer" content="same-origin">
+{{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
+<title>{{.Title}} · {{t "app.name"}}</title>
 <link rel="icon" href="{{asset "favicon.svg"}}" type="image/svg+xml">
 <link rel="stylesheet" href="{{asset "style.css"}}">
 </head>
 <body>
 <header class="topbar">
-  <span class="brand">{{t "app.name"}}</span>
+  <a class="brand" href="/home">{{t "app.name"}}</a>
+  {{if .LoggedIn}}
+  <nav class="nav">
+    <a href="/home"{{if eq .Active "home"}} aria-current="page"{{end}}>{{t "nav.home"}}</a>
+    <a href="/admin"{{if eq .Active "admin"}} aria-current="page"{{end}}>{{t "nav.admin"}}</a>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="link">{{t "nav.logout"}}</button>
+    </form>
+  </nav>
+  {{else}}
   <span class="tagline">{{t "app.tagline"}}</span>
+  {{end}}
 </header>
 <main class="container">
+{{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}
 {{template "content" .}}
 </main>
 </body>
 </html>
 {{- end}}
+
+{{define "field" -}}
+<div class="field{{if .Error}} has-error{{end}}">
+{{- if eq .Type "bool"}}
+  <input type="hidden" name="{{.Name}}" value="false">
+  <label class="check"><input type="checkbox" name="{{.Name}}" value="true"{{if .Checked}} checked{{end}}> {{t .Label}}</label>
+{{- else}}
+  <label for="f-{{.Name}}">{{t .Label}}{{if .Required}} <span class="req" aria-hidden="true">*</span>{{end}}</label>
+  {{- if eq .Type "select"}}
+  <select id="f-{{.Name}}" name="{{.Name}}">
+    {{- range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{t .Label}}</option>{{end}}
+  </select>
+  {{- else if eq .Type "textarea"}}
+  <textarea id="f-{{.Name}}" name="{{.Name}}" rows="4"{{if .MaxLen}} maxlength="{{.MaxLen}}"{{end}}{{if .Required}} required{{end}}>{{.Value}}</textarea>
+  {{- else if eq .Type "secret"}}
+  <input id="f-{{.Name}}" name="{{.Name}}" type="password" autocomplete="new-password"{{if .Required}} required{{end}}>
+  {{- if .HasSecret}}<small class="help">{{t "form.secret.keep"}}</small>{{end}}
+  {{- else if eq .Type "int"}}
+  <input id="f-{{.Name}}" name="{{.Name}}" type="number" value="{{.Value}}" inputmode="numeric"{{if .Required}} required{{end}}>
+  {{- else}}
+  <input id="f-{{.Name}}" name="{{.Name}}" type="text" value="{{.Value}}"{{if .MaxLen}} maxlength="{{.MaxLen}}"{{end}}{{if .Required}} required{{end}}>
+  {{- end}}
+{{- end}}
+  {{- if .Help}}<small class="help">{{t .Help}}</small>{{end}}
+  {{- if .Error}}<small class="error">{{.Error}}</small>{{end}}
+</div>
+{{- end}}
+
+{{define "badge"}}<span class="badge badge-{{.Status}}">{{t .StatusLabel}}</span>{{end}}

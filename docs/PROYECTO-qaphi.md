@@ -32,7 +32,7 @@ Windows y macOS, varios usuarios o roles, sondas distribuidas, métricas del pro
 ## Funcionalidad
 **Rutas:** `/` → `/home` · `/setup` (solo mientras no hay contraseña) · `/login` · `/logout` · `/home` (pública o con login, según ajuste) · `/admin` (siempre con login) · `/api/v1` (misma regla que `/home`; si es privada, con token) · `/hb/<token>` (heartbeats).
 
-**Autenticación:** usuario único `admin`. En el primer inicio, `/setup` pide la contraseña junto con un **token de un solo uso impreso en el log**. Hash bcrypt, cookie `HttpOnly` + `SameSite=Strict` (+ `Secure` con HTTPS), CSRF, límite de intentos. La contraseña solo se recupera desde consola: `qaphi reset-password`. Por el bloqueo exclusivo, el propio comando detiene el servicio, hace el cambio con la identidad del usuario `qaphi` (para que no queden ficheros de root que el servicio no pueda abrir) y lo vuelve a arrancar.
+**Autenticación:** usuario único `admin`. En el primer inicio, `/setup` pide la contraseña junto con un **token de un solo uso impreso en el log**. Hash bcrypt, cookie `HttpOnly` + `SameSite=Strict` (+ `Secure` con HTTPS), CSRF, límite de intentos. La contraseña solo se recupera desde consola: `qaphi reset-password`. Por el bloqueo exclusivo, el propio comando detiene el servicio, hace el cambio y deja los ficheros de la base de datos con el propietario del servicio (para que no queden ficheros de root que el servicio no pueda abrir) y lo vuelve a arrancar.
 
 **Página pública:** desactivada por defecto. En modo público oculta los destinos (URLs, IPs, puertos).
 
@@ -75,7 +75,7 @@ Flags con su variable de entorno equivalente: `--listen` / `QAPHI_LISTEN` (`:809
 
 ## Fases (detente al final de cada una y espera confirmación)
 0. **Esqueleto** ✔ (validado con emulación; pendiente validar en un ARMv7 real): configuración, logging, `Store` + SQLite + migraciones, `serve`/`version`, Makefile de compilación cruzada, registro de módulos. Criterio: el binario `linux/arm` arranca y funciona en un equipo ARMv7 de 32 bits real.
-1. **Autenticación y núcleo:** setup, login, sesiones, `reset-password`; checks HTTP y TCP; planificador y buffer; `/home` básico; instancia única; `install` / `uninstall` / actualización con vuelta atrás; comprobación del reloj.
+1. **Autenticación y núcleo** ✔ (`v0.1.0`; pendiente probar la instalación en la NanoPi): setup, login, sesiones, `reset-password`; checks HTTP y TCP; planificador y buffer; `/home` básico; instancia única; `install` / `uninstall` / actualización con vuelta atrás; comprobación del reloj.
 2. **Checks y estado:** resto de checks, confirmación, incidencias, agregados, uptime, retención; componentes visuales y página pública.
 3. **Avisos e integración:** canales, dependencias, mantenimiento, API y tokens, `status`, exportar/importar, sección Diseño.
 4. **Pulido:** revisión de seguridad, medición real de binario y RAM (optimizar si no se cumplen los goals), README, `install.sh` y publicación de binarios en GitHub Releases, `deploy/qaphi.service` generado desde la misma plantilla que usa el instalador.
@@ -87,7 +87,10 @@ Flags con su variable de entorno equivalente: `--listen` / `QAPHI_LISTEN` (`:809
 - Instancia única por sistema, autocontenida (bloqueo de SQLite + socket abstracto `@qaphi`).
 - Instalación con `qaphi install` (instalar y actualizar), solo systemd, usuario `qaphi` sin contraseña ni shell, vuelta atrás automática, `uninstall` que conserva datos salvo `--purge`.
 - Ping: `CAP_NET_RAW` concedido en la unit generada.
-- Versiones con etiquetas semver (`v0.1.0`…).
+- Autenticación: contraseña de 10 caracteres como mínimo (72 bytes como máximo, límite de bcrypt), bcrypt con coste 10 y comprobaciones serializadas; sesiones de 7 días (ajuste `session.ttl`) guardadas con hash; 5 intentos fallidos en 15 min bloquean la IP 15 min; CSRF con token de sesión (o cookie en login y setup) más comprobación de origen.
+- Planificador: concurrencia 8 por defecto (ajuste `scheduler.concurrency`), margen de 5 s sobre el tiempo máximo antes de abandonar un check, y el intervalo debe superar el tiempo máximo del check.
+- `/home` se recarga sola cada 30 s (sin JS). Los formularios envían un campo oculto «false» antes de cada casilla; un booleano ausente toma su valor por defecto.
+- Versiones con etiquetas semver: cada fase cerrada es `v0.N.0` (fase 1 → `v0.1.0`), correcciones `v0.N.x`, y `v1.0.0` al terminar la fase 4. El Makefile toma la versión de `git describe`; sin etiqueta exacta es una compilación de desarrollo.
 
 ## Reglas de trabajo
 - Al cerrar cada fase: `go build ./...`, `go vet ./...` y `go test ./...` en verde, tamaño del binario `linux/arm` (`GOARM=7`) y resumen de decisiones. Luego **para y espera**.

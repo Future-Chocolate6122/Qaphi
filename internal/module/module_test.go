@@ -205,3 +205,21 @@ func mustPanic(t *testing.T, want string, fn func()) {
 	}()
 	fn()
 }
+
+func TestBoolConDefault(t *testing.T) {
+	info := Info{ID: "b", Name: "test.mod", Fields: []Field{
+		{Key: "x", Label: "test.insecure", Type: Bool, Default: "true"},
+	}}
+	if err := info.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for in, want := range map[string]string{"": "true", "false": "false", "on": "true"} {
+		v, errs := info.Normalize(Values{"x": in})
+		if errs != nil || v["x"] != want {
+			t.Errorf("x=%q → %q (%v), se esperaba %q", in, v["x"], errs, want)
+		}
+	}
+	if v, _ := info.Normalize(Values{}); v["x"] != "true" {
+		t.Errorf("ausente → %q, se esperaba el valor por defecto", v["x"])
+	}
+}

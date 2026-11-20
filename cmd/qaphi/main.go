@@ -2,8 +2,11 @@
 //
 // Uso:
 //
-//	qaphi [serve] [opciones]   arranca el servidor (subcomando por defecto)
-//	qaphi version              muestra la versión
+//	qaphi [serve] [opciones]    arranca el servidor (subcomando por defecto)
+//	qaphi install [opciones]    instala o actualiza como servicio de systemd
+//	qaphi uninstall [--purge]   desinstala (conserva los datos salvo --purge)
+//	qaphi reset-password        restablece la contraseña de admin
+//	qaphi version [--short]     muestra la versión
 package main
 
 import (
@@ -19,6 +22,7 @@ import (
 
 	"qaphi/internal/app"
 	"qaphi/internal/config"
+	"qaphi/internal/instance"
 	"qaphi/internal/logging"
 	"qaphi/internal/version"
 )
@@ -31,10 +35,10 @@ const (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	cmd := "serve"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		cmd, args = args[0], args[1:]
@@ -42,9 +46,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch cmd {
 	case "serve":
 		return serve(args, stdout, stderr)
+	case "install":
+		return installCmd(args, stdout, stderr)
+	case "uninstall":
+		return uninstallCmd(args, stdout, stderr)
+	case "reset-password":
+		return resetPasswordCmd(args, stdin, stdout, stderr)
 	case "version":
-		fmt.Fprintln(stdout, version.Get().String())
-		return exitOK
+		return versionCmd(args, stdout, stderr)
 	case "help":
 		usage(stdout)
 		return exitOK
@@ -59,12 +68,30 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `Qaphi — monitor de servicios
 
 Uso:
-  qaphi [serve] [opciones]   arranca el servidor (por defecto)
-  qaphi version              muestra la versión
-  qaphi help                 muestra esta ayuda
+  qaphi [serve] [opciones]    arranca el servidor (por defecto)
+  qaphi install [opciones]    instala o actualiza Qaphi como servicio de systemd
+  qaphi uninstall [--purge]   desinstala; conserva los datos salvo con --purge
+  qaphi reset-password        restablece la contraseña de admin
+  qaphi version [--short]     muestra la versión
+  qaphi help                  muestra esta ayuda
 
-Ejecuta «qaphi serve -h» para ver las opciones del servidor.
+Ejecuta «qaphi <subcomando> -h» para ver sus opciones.
 `)
+}
+
+func versionCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	short := fs.Bool("short", false, "solo el número de versión")
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	if *short {
+		fmt.Fprintln(stdout, version.Version)
+	} else {
+		fmt.Fprintln(stdout, version.Get().String())
+	}
+	return exitOK
 }
 
 func serve(args []string, stdout, stderr io.Writer) int {
@@ -82,11 +109,18 @@ func serve(args []string, stdout, stderr io.Writer) int {
 		OmitTime: logging.UnderJournald(os.Getenv),
 	})
 
-	// La primera señal inicia la parada ordenada. Después se restaura el
-	// comportamiento por defecto, de modo que una segunda señal fuerza la
-	// salida inmediata si la parada se atasca.
+	// Instancia única en todo el sistema.
+	lock, err := instance.Acquire(instance.DefaultName)
+	if err != nil {
+		log.Error("no se puede arrancar", "error", err)
+		return exitError
+	}
+	defer lock.Release()
+
 	// El contexto de la aplicación se cancela después de registrar la señal,
-	// para que el log refleje el orden real de los hechos.
+	// para que el log refleje el orden real de los hechos. Tras la primera
+	// señal se restaura el comportamiento por defecto: una segunda fuerza la
+	// salida si la parada se atasca.
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithCancel(context.Background())

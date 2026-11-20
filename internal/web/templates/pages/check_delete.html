@@ -1,0 +1,13 @@
+{{define "content"}}
+<section class="card narrow">
+  <h1>{{t "delete.title"}}</h1>
+  <p>{{tf "delete.confirm" .Body.Name}}</p>
+  <form method="post" action="/admin/checks/{{.Body.ID}}/delete">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="buttons">
+      <button type="submit" class="danger">{{t "delete.submit"}}</button>
+      <a href="/admin">{{t "form.cancel"}}</a>
+    </div>
+  </form>
+</section>
+{{end}}

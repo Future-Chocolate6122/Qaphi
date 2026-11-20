@@ -1,0 +1,33 @@
+{{define "content"}}
+<div class="heading">
+  <h1>{{t "admin.checks"}}</h1>
+  <a class="button primary" href="/admin/checks/new">{{t "admin.new"}}</a>
+</div>
+{{if .Body.Rows}}
+<div class="table-wrap">
+<table class="checks">
+  <thead><tr>
+    <th>{{t "col.name"}}</th><th>{{t "col.type"}}</th><th>{{t "col.group"}}</th>
+    <th>{{t "col.interval"}}</th><th>{{t "col.status"}}</th><th>{{t "col.actions"}}</th>
+  </tr></thead>
+  <tbody>
+  {{range .Body.Rows}}
+    <tr>
+      <td data-label="{{t "col.name"}}"><strong>{{.Name}}</strong>{{if .Target}}<br><small class="muted target">{{.Target}}</small>{{end}}</td>
+      <td data-label="{{t "col.type"}}">{{t .TypeName}}</td>
+      <td data-label="{{t "col.group"}}">{{.Group}}</td>
+      <td data-label="{{t "col.interval"}}">{{.Interval}}</td>
+      <td data-label="{{t "col.status"}}">{{template "badge" .}}</td>
+      <td data-label="{{t "col.actions"}}" class="actions">
+        <a href="/admin/checks/{{.ID}}">{{t "admin.edit"}}</a>
+        <a href="/admin/checks/{{.ID}}/delete" class="danger">{{t "admin.delete"}}</a>
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+<section class="card"><p>{{t "admin.empty"}}</p></section>
+{{end}}
+{{end}}

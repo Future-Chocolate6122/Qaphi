@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"qaphi/internal/msg"
@@ -98,4 +99,38 @@ func logRequests(log *slog.Logger) middleware {
 				"duración", time.Since(start).Round(time.Microsecond), "remoto", r.RemoteAddr)
 		})
 	}
+}
+
+// maxFormBytes limita el tamaño de los formularios.
+const maxFormBytes = 64 << 10
+
+// limitBody limita el cuerpo de las peticiones.
+func limitBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// setupGate: mientras no haya contraseña, todo lleva a /setup (salvo los
+// estáticos); una vez configurada, /setup deja de existir.
+func (s *Server) setupGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		isSetup := r.URL.Path == "/setup"
+		if s.Admin.HasPassword() {
+			if isSetup {
+				s.renderError(w, r, http.StatusNotFound, "http.notfound")
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		if isSetup || strings.HasPrefix(r.URL.Path, "/static/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		redirect(w, r, "/setup")
+	})
 }

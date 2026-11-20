@@ -1,18 +1,21 @@
-/* Qaphi — hoja de estilos base.
+/* Qaphi — hoja de estilos.
    El aspecto se define con variables CSS: un tema es un conjunto de valores
    para estas variables. */
 :root {
-  --bg: #f6f7f9;
+  --bg: #f5f6f8;
   --surface: #ffffff;
   --text: #1c2230;
   --muted: #5b6475;
   --border: #dde1e8;
   --accent: #2f6fde;
+  --accent-text: #ffffff;
+  --danger: #c63b3b;
 
   --status-up: #2e9e5b;
   --status-slow: #d99a1e;
   --status-down: #d64545;
   --status-unknown: #8a93a3;
+  --status-paused: #7a6fd0;
 
   --radius: 8px;
   --space: 1rem;
@@ -28,11 +31,12 @@
     --muted: #9aa3b2;
     --border: #2c3340;
     --accent: #6d9df0;
+    --accent-text: #0d1117;
+    --danger: #ef6b6b;
   }
 }
 
 * { box-sizing: border-box; }
-
 html { -webkit-text-size-adjust: 100%; }
 
 body {
@@ -42,30 +46,152 @@ body {
   font: 16px/1.5 var(--font);
 }
 
+a { color: var(--accent); }
+h1 { font-size: 1.4rem; margin: 0 0 var(--space); }
+code, .target { font-family: var(--mono); font-size: .85em; word-break: break-all; }
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+
+/* Barra superior */
 .topbar {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  align-items: center;
   gap: calc(var(--space) * .75);
-  padding: calc(var(--space) * .75) var(--space);
+  padding: calc(var(--space) * .6) var(--space);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.brand { font-weight: 700; font-size: 1.15rem; }
+.brand { font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
 .tagline { color: var(--muted); font-size: .9rem; }
+.nav { display: flex; gap: var(--space); align-items: center; margin-left: auto; }
+.nav a { color: var(--muted); text-decoration: none; }
+.nav a[aria-current="page"] { color: var(--text); font-weight: 600; }
+form.inline { display: inline; margin: 0; }
 
-.container {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: var(--space);
-}
+.container { max-width: 1040px; margin: 0 auto; padding: var(--space); }
 
+/* Tarjetas y avisos */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space) calc(var(--space) * 1.25);
+  margin-bottom: var(--space);
 }
-.card h1 { margin-top: 0; font-size: 1.4rem; }
+.narrow { max-width: 460px; margin-left: auto; margin-right: auto; }
+.flash, .alert {
+  padding: calc(var(--space) * .6) var(--space);
+  border-radius: var(--radius);
+  border: 1px solid;
+}
+.flash { border-color: var(--status-up); background: color-mix(in srgb, var(--status-up) 12%, transparent); }
+.alert { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
-.muted { color: var(--muted); }
-code { font-family: var(--mono); font-size: .9em; }
+/* Banner de estado global */
+.banner {
+  border-radius: var(--radius);
+  padding: var(--space) calc(var(--space) * 1.25);
+  margin-bottom: var(--space);
+  color: #fff;
+  background: var(--status-unknown);
+}
+.banner h1 { margin: 0; font-size: 1.1rem; font-weight: 600; opacity: .9; }
+.banner .summary { margin: .25rem 0 0; font-size: 1.6rem; font-weight: 700; }
+.banner-up { background: var(--status-up); }
+.banner-down { background: var(--status-down); }
+
+/* Distintivos de estado */
+.badge {
+  display: inline-block;
+  padding: .1rem .55rem;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--status-unknown);
+  white-space: nowrap;
+}
+.badge-up { background: var(--status-up); }
+.badge-down { background: var(--status-down); }
+.badge-paused { background: var(--status-paused); }
+
+/* Tablas */
+.table-wrap { overflow-x: auto; }
+table.checks {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.checks th, .checks td {
+  text-align: left;
+  padding: .55rem .75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.checks th { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.checks tr:last-child td { border-bottom: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.actions a { margin-right: .75rem; }
+.danger { color: var(--danger); }
+
+/* En pantallas estrechas, cada fila es una tarjeta */
+@media (max-width: 640px) {
+  .checks thead { display: none; }
+  .checks, .checks tbody, .checks tr, .checks td { display: block; width: 100%; }
+  .checks tr { border-bottom: 1px solid var(--border); padding: .4rem 0; }
+  .checks td { border: 0; padding: .2rem .75rem; text-align: left; }
+  .checks td[data-label]::before {
+    content: attr(data-label);
+    display: inline-block;
+    min-width: 9rem;
+    color: var(--muted);
+    font-size: .8rem;
+  }
+  .nav { margin-left: 0; }
+}
+
+/* Formularios */
+.heading { display: flex; justify-content: space-between; align-items: center; gap: var(--space); margin-bottom: var(--space); }
+.heading h1 { margin: 0; }
+fieldset { border: 0; padding: 0; margin: 0 0 var(--space); }
+legend { font-weight: 600; margin-bottom: .5rem; }
+.field { margin-bottom: calc(var(--space) * .9); }
+.field label { display: block; font-weight: 500; margin-bottom: .25rem; }
+.field label.check { font-weight: normal; }
+.field input[type=text], .field input[type=password], .field input[type=number], .field select, .field textarea {
+  width: 100%;
+  max-width: 34rem;
+  padding: .45rem .6rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * .75);
+}
+.field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field .help { display: block; color: var(--muted); font-size: .85rem; margin-top: .2rem; }
+.field .error { display: block; color: var(--danger); font-size: .85rem; margin-top: .2rem; }
+.has-error input, .has-error select, .has-error textarea { border-color: var(--danger); }
+.req { color: var(--danger); }
+.buttons { display: flex; gap: var(--space); align-items: center; }
+
+button, .button {
+  display: inline-block;
+  font: inherit;
+  padding: .45rem 1rem;
+  border-radius: calc(var(--radius) * .75);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+button.link { border: 0; background: none; padding: 0; color: var(--muted); }
+
+.types { list-style: none; padding: 0; display: grid; gap: var(--space); grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.types p { margin: .3rem 0 0; }

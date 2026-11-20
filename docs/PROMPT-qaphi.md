@@ -55,7 +55,7 @@ El usuario es administrador de sistemas. La primera instalación será una NanoP
 - Sesión en cookie `HttpOnly`, `SameSite=Strict` y `Secure` cuando la petición llega por HTTPS; caducidad configurable.
 - **Protección CSRF** en todos los formularios.
 - **Limitación de intentos de login**: bloqueo temporal tras varios fallos.
-- **Recuperación**: subcomando `qaphi reset-password`, solo desde consola. Nunca desde la web. Por el bloqueo exclusivo, el propio comando detiene el servicio, hace el cambio con la identidad del usuario `qaphi` (para no dejar ficheros de root que el servicio no pueda abrir) y lo vuelve a arrancar.
+- **Recuperación**: subcomando `qaphi reset-password`, solo desde consola. Nunca desde la web. Por el bloqueo exclusivo, el propio comando detiene el servicio, hace el cambio y deja los ficheros de la base de datos con el propietario del servicio (para no dejar ficheros de root que el servicio no pueda abrir) y lo vuelve a arrancar.
 
 ### Página de estado (`/home`)
 
@@ -316,7 +316,7 @@ La estructura puede ajustarse si hay una razón clara, explicándola.
 - **Plataformas**: solo Linux (amd64, arm64, armv7 y armv6). Sin Windows ni macOS.
 - **Instancia única** por sistema, autocontenida, con bloqueo exclusivo de SQLite.
 - **Instalación**: `qaphi install`, solo systemd, usuario `qaphi` sin contraseña ni shell, vuelta atrás automática.
-- **Versiones**: etiquetas semver.
+- **Versiones**: etiquetas semver; cada fase cerrada es `v0.N.0` (fase 1 → `v0.1.0`), correcciones `v0.N.x`, `v1.0.0` al terminar la fase 4.
 - **Métricas del equipo y systemd**: fuera de esta versión.
 - **Puerto por defecto**: 8091.
 - **Página de estado pública**: desactivada por defecto.

@@ -1,0 +1,12 @@
+{{define "content"}}
+<h1>{{t "admin.choose_type"}}</h1>
+<ul class="types">
+{{range .Body}}
+  <li class="card">
+    <a href="/admin/checks/new?type={{.ID}}"><strong>{{t .Name}}</strong></a>
+    {{with .Description}}<p class="muted">{{t .}}</p>{{end}}
+  </li>
+{{end}}
+</ul>
+<p><a href="/admin">{{t "form.cancel"}}</a></p>
+{{end}}

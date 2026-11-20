@@ -1,0 +1,20 @@
+{{define "content"}}
+<h1>{{.Title}}</h1>
+{{if .Body.HasError}}<p class="alert" role="alert">{{t "form.errors"}}</p>{{end}}
+<form method="post" action="{{.Body.Action}}" class="card form" novalidate>
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="type" value="{{.Body.TypeID}}">
+  <fieldset>
+    <legend>{{t "check.f.common"}}</legend>
+    {{range .Body.Common}}{{template "field" .}}{{end}}
+  </fieldset>
+  <fieldset>
+    <legend>{{t "check.f.params"}} · {{t .Body.TypeName}}</legend>
+    {{range .Body.Params}}{{template "field" .}}{{end}}
+  </fieldset>
+  <div class="buttons">
+    <button type="submit" class="primary">{{t "form.save"}}</button>
+    <a href="/admin">{{t "form.cancel"}}</a>
+  </div>
+</form>
+{{end}}

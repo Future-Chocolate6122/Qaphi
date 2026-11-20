@@ -1,0 +1,19 @@
+{{define "content"}}
+<section class="card narrow">
+  <h1>{{t "login.title"}}</h1>
+  {{with .Body.Error}}<p class="alert" role="alert">{{.}}</p>{{end}}
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="next" value="{{.Body.Next}}">
+    <div class="field">
+      <label for="f-user">{{t "login.user"}}</label>
+      <input id="f-user" name="username" type="text" value="admin" autocomplete="username" readonly>
+    </div>
+    <div class="field">
+      <label for="f-password">{{t "login.password"}}</label>
+      <input id="f-password" name="password" type="password" autocomplete="current-password" required autofocus>
+    </div>
+    <button type="submit" class="primary">{{t "login.submit"}}</button>
+  </form>
+</section>
+{{end}}
