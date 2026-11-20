@@ -25,19 +25,18 @@ BUILD   := $(GO) build -trimpath -ldflags '$(LDFLAGS)'
 
 export CGO_ENABLED := 0
 
-# Plataformas objetivo (sin macOS).
+# Plataformas objetivo: solo Linux.
 TARGETS := \
 	$(DIST)/qaphi-linux-amd64 \
 	$(DIST)/qaphi-linux-arm64 \
-	$(DIST)/qaphi-linux-armv7 \
-	$(DIST)/qaphi-windows-amd64.exe
+	$(DIST)/qaphi-linux-armv7
 
 .PHONY: all build check fmt fmt-check vet test cross size clean run $(TARGETS)
 
 all: build
 
 build:
-	$(BUILD) -o $(BIN_DIR)/qaphi$(shell $(GO) env GOEXE) $(PKG)
+	$(BUILD) -o $(BIN_DIR)/qaphi $(PKG)
 
 run: build
 	./$(BIN_DIR)/qaphi serve --log-level=debug
@@ -66,9 +65,6 @@ $(DIST)/qaphi-linux-arm64:
 
 $(DIST)/qaphi-linux-armv7:
 	GOOS=linux GOARCH=arm GOARM=7 $(BUILD) -o $@ $(PKG)
-
-$(DIST)/qaphi-windows-amd64.exe:
-	GOOS=windows GOARCH=amd64 $(BUILD) -o $@ $(PKG)
 
 size:
 	@for f in $(TARGETS); do \

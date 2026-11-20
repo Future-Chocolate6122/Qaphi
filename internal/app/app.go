@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"qaphi/internal/config"
@@ -74,8 +73,7 @@ func prepareDataDir(dir string, log *slog.Logger) error {
 	if !fi.IsDir() {
 		return fmt.Errorf("%s no es un directorio", dir)
 	}
-	// En Windows los permisos Unix no son significativos.
-	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+	if fi.Mode().Perm()&0o077 != 0 {
 		log.Warn("el directorio de datos es accesible por otros usuarios; se recomienda chmod 700",
 			"ruta", dir, "permisos", fmt.Sprintf("%04o", fi.Mode().Perm()))
 	}
