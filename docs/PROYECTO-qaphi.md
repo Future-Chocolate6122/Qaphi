@@ -7,7 +7,7 @@ Actúa como desarrollador sénior de Go. Responde en castellano. Identificadores
 
 ## Goals
 - Binario ≤ 20 MB (`-ldflags="-s -w"`) y RAM ≤ 30 MB con 20 checks cada 60 s.
-- `CGO_ENABLED=0`, compilación cruzada para Linux amd64, Linux arm64 y Linux armv7 de 32 bits (`GOARCH=arm GOARM=7`). **Solo Linux: sin Windows ni macOS.**
+- `CGO_ENABLED=0`, compilación cruzada para Linux amd64, arm64, armv7 (`GOARCH=arm GOARM=7`) y armv6 (`GOARM=6`, Raspberry Pi Zero/1). **Solo Linux: sin Windows ni macOS.**
 - Plantillas, CSS y JS embebidos (`embed`); nada que instalar en el destino.
 - Pocas escrituras a disco, sin perder incidencias ni configuración ante un corte de luz.
 - Toda la configuración desde la web, sin ficheros que editar a mano.
@@ -32,7 +32,7 @@ Windows y macOS, varios usuarios o roles, sondas distribuidas, métricas del pro
 ## Funcionalidad
 **Rutas:** `/` → `/home` · `/setup` (solo mientras no hay contraseña) · `/login` · `/logout` · `/home` (pública o con login, según ajuste) · `/admin` (siempre con login) · `/api/v1` (misma regla que `/home`; si es privada, con token) · `/hb/<token>` (heartbeats).
 
-**Autenticación:** usuario único `admin`. En el primer inicio, `/setup` pide la contraseña junto con un **token de un solo uso impreso en el log**. Hash bcrypt, cookie `HttpOnly` + `SameSite=Strict` (+ `Secure` con HTTPS), CSRF, límite de intentos. La contraseña solo se recupera desde consola: `qaphi reset-password` (requiere detener el servicio por el bloqueo exclusivo; el comando puede encargarse de ello).
+**Autenticación:** usuario único `admin`. En el primer inicio, `/setup` pide la contraseña junto con un **token de un solo uso impreso en el log**. Hash bcrypt, cookie `HttpOnly` + `SameSite=Strict` (+ `Secure` con HTTPS), CSRF, límite de intentos. La contraseña solo se recupera desde consola: `qaphi reset-password`. Por el bloqueo exclusivo, el propio comando detiene el servicio, hace el cambio con la identidad del usuario `qaphi` (para que no queden ficheros de root que el servicio no pueda abrir) y lo vuelve a arrancar.
 
 **Página pública:** desactivada por defecto. En modo público oculta los destinos (URLs, IPs, puertos).
 
@@ -44,11 +44,19 @@ Windows y macOS, varios usuarios o roles, sondas distribuidas, métricas del pro
 
 **Admin:** CRUD de checks y canales, sección Diseño, ajustes, tokens de API (guardados con hash, visibles una sola vez), exportar e importar en JSON.
 
-**CLI:** `qaphi serve | status [--json] | reset-password | install | version`. `status` imprime «4/4 (todos up)» o «3/4 (1 caído)», consultando al proceso en marcha por un socket Unix local en el directorio de datos.
+**CLI:** `qaphi serve | status [--json] | reset-password | install | uninstall | version`. `status` imprime «4/4 (todos up)» o «3/4 (1 caído)», consultando al proceso en marcha por un socket Unix local en el directorio de datos.
 
-**Instancia única:** solo puede correr una instancia de qaphi por sistema. Dos capas: SQLite en `locking_mode=EXCLUSIVE` (protege el directorio de datos y evita el fichero `-shm`) y un bloqueo global que el sistema libera solo si el proceso muere (socket Unix abstracto `@qaphi`, sin ficheros ni rutas fijas). Solo `serve` toma el bloqueo; si ya hay una instancia, sale con error claro y código ≠ 0.
+**Instancia única (autocontenida, la garantiza el propio binario):** solo puede correr una instancia de qaphi por sistema. Dos capas: SQLite en `locking_mode=EXCLUSIVE` (protege el directorio de datos y evita el fichero `-shm`) y un bloqueo global que el sistema libera solo si el proceso muere (socket Unix abstracto `@qaphi`, sin ficheros ni rutas fijas). Solo `serve` toma el bloqueo; si ya hay una instancia, sale con error claro y código ≠ 0.
 
-**Instalación y actualización:** desatendida y con un solo comando. Para actualizar basta con ejecutar la nueva compilación: se instala sola, conserva datos y configuración y vuelve a lanzar la aplicación si ya estaba en marcha. Las opciones de arranque indicadas al instalar se conservan en las actualizaciones.
+**Instalación y actualización:** desatendida, con un solo comando: `sudo ./qaphi install [opciones]`, que sirve para instalar y para actualizar. Solo systemd. En el destino no hace falta preparar nada: basta Linux con systemd, root y `useradd` (de serie). Se recomienda NTP (Armbian lo trae).
+- *Instalación nueva:* comprueba root y systemd (si falta algo, explica qué y sale sin cambiar nada) → crea el usuario de sistema `qaphi` (sin contraseña, sin shell, sin home) → copia el binario a `/usr/local/bin/qaphi` (temporal + rename atómico) → crea `/var/lib/qaphi` (0700, de `qaphi`) → genera `/etc/systemd/system/qaphi.service` → `systemctl enable --now` → espera a que responda y muestra la URL y el token de configuración inicial.
+- *Actualización (el mismo comando con el binario nuevo):* detecta la instalación y anota si el servicio estaba activo y habilitado → compara versiones semver (una versión anterior exige `--force`; las compilaciones sin etiqueta, «dev», se instalan con aviso) → para el servicio de forma ordenada → copia `qaphi.db` y guarda el binario anterior como `qaphi.prev` → sustituye el binario y regenera la unit → arranca solo si estaba en marcha → comprueba que responde; si no, **vuelta atrás automática** (binario y base de datos) y lo vuelve a arrancar.
+- *Opciones de arranque* (`--listen`, etc.): se guardan en `/etc/qaphi/qaphi.env`, generado por el instalador (nadie lo edita); las actualizaciones lo respetan y para cambiarlas basta con volver a ejecutar `sudo qaphi install --listen :9000`.
+- *Unit generada:* usuario `qaphi`, endurecida (`NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, escritura solo en `/var/lib/qaphi`), `Restart=on-failure`, `AmbientCapabilities=CAP_NET_RAW` y `CapabilityBoundingSet=CAP_NET_RAW` **activos** (ping ICMP sin configurar nada), `After=network-online.target time-sync.target`.
+- *`qaphi uninstall`:* para y quita servicio, unit, binario y usuario; conserva los datos salvo `--purge`.
+- *`install.sh` (fase 4, opcional):* detecta la arquitectura, descarga el binario de GitHub Releases y ejecuta `qaphi install` (`curl … | sudo sh`).
+
+**Reloj (equipos sin RTC):** mientras la hora del sistema sea anterior a la fecha de compilación del binario, Qaphi no registra resultados ni incidencias y lo avisa en el log; empieza en cuanto NTP sincroniza.
 
 ## Diseño visual (todo en SVG generado en Go + CSS, sin JS)
 - **Barras:** altura proporcional al tiempo de respuesta · barras agregadas con proporción de fallos apilada · verde, ámbar (lento) y rojo · mantenimiento con rayado diagonal · marcadores de incidencia · barras antiguas más tenues · la última «late» (respetando `prefers-reduced-motion`) · tooltips con `<title>`.
@@ -63,22 +71,23 @@ Windows y macOS, varios usuarios o roles, sondas distribuidas, métricas del pro
 Valores de 64 bits compartidos con `atomic.Int64` / `atomic.Uint64`, nunca `atomic.AddInt64(&campo, …)` sobre campos sueltos (en ARM de 32 bits pueden quedar mal alineados y provocar un pánico). `int64` explícito para marcas de tiempo, duraciones, contadores y tamaños; nunca asumir que `int` es de 64 bits.
 
 ## Arranque y operación
-Flags con su variable de entorno equivalente: `--listen` / `QAPHI_LISTEN` (`:8091`), `--data-dir` / `QAPHI_DATA_DIR` (`./data`), `--log-level` / `QAPHI_LOG_LEVEL` (`info`), `--log-format` / `QAPHI_LOG_FORMAT` (`text` o `json`), `--flush-interval` / `QAPHI_FLUSH_INTERVAL` (`5m`, entre 10 s y 1 h). Logs con `slog` a stdout. Planificador con jitter, concurrencia máxima configurable, timeout en todo check y recuperación de pánicos. Cabeceras de seguridad (CSP, `X-Frame-Options`, `nosniff`); secretos nunca en los logs.
+Flags con su variable de entorno equivalente: `--listen` / `QAPHI_LISTEN` (`:8091`), `--data-dir` / `QAPHI_DATA_DIR` (`./data`), `--log-level` / `QAPHI_LOG_LEVEL` (`info`), `--log-format` / `QAPHI_LOG_FORMAT` (`text` o `json`), `--flush-interval` / `QAPHI_FLUSH_INTERVAL` (`5m`, entre 10 s y 1 h). Logs con `slog` a stdout; bajo journald (`JOURNAL_STREAM`) se omite la marca de tiempo propia. En `info` solo se registran cambios de estado, nunca cada resultado (journald también escribe en la microSD). Planificador con jitter, concurrencia máxima configurable, timeout en todo check y recuperación de pánicos. Cabeceras de seguridad (CSP, `X-Frame-Options`, `nosniff`); secretos nunca en los logs.
 
 ## Fases (detente al final de cada una y espera confirmación)
-0. **Esqueleto** ✔ (pendiente validar en un ARMv7 real; validado con emulación): configuración, logging, `Store` + SQLite + migraciones, `serve`/`version`, Makefile de compilación cruzada, registro de módulos. Criterio: el binario `linux/arm` arranca y funciona en un equipo ARMv7 de 32 bits real.
-1. **Autenticación y núcleo:** setup, login, sesiones, `reset-password`; checks HTTP y TCP; planificador y buffer; `/home` básico; instancia única.
+0. **Esqueleto** ✔ (validado con emulación; pendiente validar en un ARMv7 real): configuración, logging, `Store` + SQLite + migraciones, `serve`/`version`, Makefile de compilación cruzada, registro de módulos. Criterio: el binario `linux/arm` arranca y funciona en un equipo ARMv7 de 32 bits real.
+1. **Autenticación y núcleo:** setup, login, sesiones, `reset-password`; checks HTTP y TCP; planificador y buffer; `/home` básico; instancia única; `install` / `uninstall` / actualización con vuelta atrás; comprobación del reloj.
 2. **Checks y estado:** resto de checks, confirmación, incidencias, agregados, uptime, retención; componentes visuales y página pública.
 3. **Avisos e integración:** canales, dependencias, mantenimiento, API y tokens, `status`, exportar/importar, sección Diseño.
-4. **Pulido:** revisión de seguridad, medición real de binario y RAM (optimizar si no se cumplen los goals), README, unit de systemd.
+4. **Pulido:** revisión de seguridad, medición real de binario y RAM (optimizar si no se cumplen los goals), README, `install.sh` y publicación de binarios en GitHub Releases, `deploy/qaphi.service` generado desde la misma plantilla que usa el instalador.
 
-## Decisiones pendientes (instalación)
-1. Forma del comando: `qaphi install` explícito para instalar y actualizar (propuesta) o instalación al ejecutar el binario sin argumentos.
-2. Gestor de servicios: solo systemd con mensaje claro en el resto (propuesta) o también OpenRC.
-3. Si la versión nueva no arranca: vuelta atrás automática del binario y de la base de datos (propuesta) o solo copia y aviso.
-4. Usuario del servicio: usuario fijo `qaphi` (propuesta) o `DynamicUser` de systemd.
-5. `qaphi uninstall` (propuesto: conserva los datos salvo `--purge`).
-6. Fase en la que se implementa (propuesta: fase 1, para instalar y actualizar la NanoPi desde el principio).
+## Decisiones tomadas
+- Solo Linux; arquitecturas amd64, arm64, armv7 y armv6.
+- Go 1.27 (fijado en `go.mod`), módulo `qaphi`.
+- SQLite: WAL, `locking_mode=EXCLUSIVE`, `synchronous=FULL`, una conexión, caché de 2 MiB.
+- Instancia única por sistema, autocontenida (bloqueo de SQLite + socket abstracto `@qaphi`).
+- Instalación con `qaphi install` (instalar y actualizar), solo systemd, usuario `qaphi` sin contraseña ni shell, vuelta atrás automática, `uninstall` que conserva datos salvo `--purge`.
+- Ping: `CAP_NET_RAW` concedido en la unit generada.
+- Versiones con etiquetas semver (`v0.1.0`…).
 
 ## Reglas de trabajo
 - Al cerrar cada fase: `go build ./...`, `go vet ./...` y `go test ./...` en verde, tamaño del binario `linux/arm` (`GOARM=7`) y resumen de decisiones. Luego **para y espera**.

@@ -76,7 +76,11 @@ func serve(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "qaphi: configuración no válida:\n%v\n", err)
 		return exitUsage
 	}
-	log := logging.New(stdout, cfg.LogLevel, cfg.LogFormat)
+	log := logging.New(stdout, logging.Options{
+		Level:    cfg.LogLevel,
+		Format:   cfg.LogFormat,
+		OmitTime: logging.UnderJournald(os.Getenv),
+	})
 
 	// La primera señal inicia la parada ordenada. Después se restaura el
 	// comportamiento por defecto, de modo que una segunda señal fuerza la

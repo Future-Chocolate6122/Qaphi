@@ -29,7 +29,8 @@ export CGO_ENABLED := 0
 TARGETS := \
 	$(DIST)/qaphi-linux-amd64 \
 	$(DIST)/qaphi-linux-arm64 \
-	$(DIST)/qaphi-linux-armv7
+	$(DIST)/qaphi-linux-armv7 \
+	$(DIST)/qaphi-linux-armv6
 
 .PHONY: all build check fmt fmt-check vet test cross size clean run $(TARGETS)
 
@@ -65,6 +66,10 @@ $(DIST)/qaphi-linux-arm64:
 
 $(DIST)/qaphi-linux-armv7:
 	GOOS=linux GOARCH=arm GOARM=7 $(BUILD) -o $@ $(PKG)
+
+# ARMv6 (Raspberry Pi Zero / 1), que no puede ejecutar el binario armv7.
+$(DIST)/qaphi-linux-armv6:
+	GOOS=linux GOARCH=arm GOARM=6 $(BUILD) -o $@ $(PKG)
 
 size:
 	@for f in $(TARGETS); do \
