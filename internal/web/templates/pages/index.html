@@ -1,0 +1,9 @@
+{{define "title"}}{{t "index.title"}}{{end}}
+{{define "content"}}
+<section class="card">
+  <h1>{{t "index.title"}}</h1>
+  <p>{{t "index.running"}}</p>
+  <p class="muted">{{t "index.pending"}}</p>
+  <p class="muted">{{t "index.version"}}: <code>{{.Version}}</code></p>
+</section>
+{{end}}

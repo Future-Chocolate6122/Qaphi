@@ -1,0 +1,9 @@
+# Binarios y artefactos de compilación
+/bin/
+/dist/
+
+# Directorio de datos por defecto (contiene la base de datos)
+/data/
+*.db
+*.db-wal
+*.db-shm

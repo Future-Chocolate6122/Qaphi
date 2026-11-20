@@ -1,0 +1,71 @@
+/* Qaphi — hoja de estilos base.
+   El aspecto se define con variables CSS: un tema es un conjunto de valores
+   para estas variables. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1c2230;
+  --muted: #5b6475;
+  --border: #dde1e8;
+  --accent: #2f6fde;
+
+  --status-up: #2e9e5b;
+  --status-slow: #d99a1e;
+  --status-down: #d64545;
+  --status-unknown: #8a93a3;
+
+  --radius: 8px;
+  --space: 1rem;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151b;
+    --surface: #1b2029;
+    --text: #e4e8ef;
+    --muted: #9aa3b2;
+    --border: #2c3340;
+    --accent: #6d9df0;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 var(--font);
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--space) * .75);
+  padding: calc(var(--space) * .75) var(--space);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 700; font-size: 1.15rem; }
+.tagline { color: var(--muted); font-size: .9rem; }
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space) calc(var(--space) * 1.25);
+}
+.card h1 { margin-top: 0; font-size: 1.4rem; }
+
+.muted { color: var(--muted); }
+code { font-family: var(--mono); font-size: .9em; }
