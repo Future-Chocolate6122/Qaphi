@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"qaphi/internal/model"
-	"qaphi/internal/module"
-	"qaphi/internal/store"
+	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/store"
 )
 
 // ---------------------------------------------------------------- checks

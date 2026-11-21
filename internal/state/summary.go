@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/model"
 )
 
 // Summary es el resumen global del estado.

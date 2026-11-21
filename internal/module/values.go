@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 )
 
 var lineBreaks = strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ")

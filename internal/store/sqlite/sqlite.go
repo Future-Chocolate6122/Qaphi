@@ -27,7 +27,7 @@ import (
 
 	_ "modernc.org/sqlite" // registra el driver "sqlite"
 
-	"qaphi/internal/store"
+	"github.com/future-chocolate6122/qaphi/internal/store"
 )
 
 // cacheSizeKiB es el tamaño máximo de la caché de páginas de SQLite.

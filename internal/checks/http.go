@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"qaphi/internal/module"
-	"qaphi/internal/msg"
-	"qaphi/internal/version"
+	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/version"
 )
 
 // maxBodyRead es lo máximo que se lee del cuerpo de la respuesta.

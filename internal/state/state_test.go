@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/model"
 )
 
 type fakeWriter struct {

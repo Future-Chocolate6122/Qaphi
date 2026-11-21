@@ -1,4 +1,4 @@
-module qaphi
+module github.com/future-chocolate6122/qaphi
 
 go 1.27
 

@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"strings"
 
-	"qaphi/internal/auth"
-	"qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/auth"
+	"github.com/future-chocolate6122/qaphi/internal/model"
 )
 
 // Nombres de las cookies.

@@ -19,10 +19,10 @@ import (
 	"sync"
 	"time"
 
-	"qaphi/internal/checks"
-	"qaphi/internal/model"
-	"qaphi/internal/module"
-	"qaphi/internal/state"
+	"github.com/future-chocolate6122/qaphi/internal/checks"
+	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/state"
 )
 
 // DefaultConcurrency es la concurrencia máxima por defecto.

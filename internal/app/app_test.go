@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"qaphi/internal/config"
+	"github.com/future-chocolate6122/qaphi/internal/config"
 )
 
 // TestCicloDeVida comprueba el criterio de la fase 0: arranca, crea

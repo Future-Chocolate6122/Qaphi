@@ -9,7 +9,7 @@ import (
 	"errors"
 	"time"
 
-	"qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/model"
 )
 
 // ErrNotFound indica que el elemento pedido no existe.

@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"qaphi/internal/config"
-	"qaphi/internal/version"
+	"github.com/future-chocolate6122/qaphi/internal/config"
+	"github.com/future-chocolate6122/qaphi/internal/version"
 )
 
 // Rutas y nombres de la instalación.

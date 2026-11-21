@@ -17,8 +17,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"qaphi/internal/model"
-	"qaphi/internal/store"
+	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/store"
 )
 
 // Claves de ajustes.

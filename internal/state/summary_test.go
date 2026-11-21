@@ -3,7 +3,7 @@ package state
 import (
 	"testing"
 
-	"qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/model"
 )
 
 func TestSummary(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"qaphi/internal/install"
+	"github.com/future-chocolate6122/qaphi/internal/install"
 )
 
 func installCmd(args []string, stdout, stderr io.Writer) int {

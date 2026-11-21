@@ -20,11 +20,11 @@ import (
 	"strings"
 	"syscall"
 
-	"qaphi/internal/app"
-	"qaphi/internal/config"
-	"qaphi/internal/instance"
-	"qaphi/internal/logging"
-	"qaphi/internal/version"
+	"github.com/future-chocolate6122/qaphi/internal/app"
+	"github.com/future-chocolate6122/qaphi/internal/config"
+	"github.com/future-chocolate6122/qaphi/internal/instance"
+	"github.com/future-chocolate6122/qaphi/internal/logging"
+	"github.com/future-chocolate6122/qaphi/internal/version"
 )
 
 // Códigos de salida.

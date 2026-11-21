@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"qaphi/internal/module"
-	"qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 )
 
 func init() {

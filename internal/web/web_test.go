@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"qaphi/internal/auth"
-	_ "qaphi/internal/checks" // registra los tipos de check
-	"qaphi/internal/model"
-	"qaphi/internal/state"
-	"qaphi/internal/store/sqlite"
+	"github.com/future-chocolate6122/qaphi/internal/auth"
+	_ "github.com/future-chocolate6122/qaphi/internal/checks" // registra los tipos de check
+	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/state"
+	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
 )
 
 const testPassword = "una contraseña de prueba"

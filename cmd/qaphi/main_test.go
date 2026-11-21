@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"qaphi/internal/auth"
-	"qaphi/internal/model"
-	"qaphi/internal/store/sqlite"
-	"qaphi/internal/version"
+	"github.com/future-chocolate6122/qaphi/internal/auth"
+	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
+	"github.com/future-chocolate6122/qaphi/internal/version"
 )
 
 func runCmd(args []string, stdin string) (int, string, string) {

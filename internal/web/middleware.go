@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 )
 
 type middleware func(http.Handler) http.Handler

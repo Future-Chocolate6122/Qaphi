@@ -15,15 +15,15 @@ import (
 	"sync"
 	"time"
 
-	"qaphi/internal/auth"
-	_ "qaphi/internal/checks" // registra los tipos de check
-	"qaphi/internal/clock"
-	"qaphi/internal/config"
-	"qaphi/internal/scheduler"
-	"qaphi/internal/state"
-	"qaphi/internal/store/sqlite"
-	"qaphi/internal/version"
-	"qaphi/internal/web"
+	"github.com/future-chocolate6122/qaphi/internal/auth"
+	_ "github.com/future-chocolate6122/qaphi/internal/checks" // registra los tipos de check
+	"github.com/future-chocolate6122/qaphi/internal/clock"
+	"github.com/future-chocolate6122/qaphi/internal/config"
+	"github.com/future-chocolate6122/qaphi/internal/scheduler"
+	"github.com/future-chocolate6122/qaphi/internal/state"
+	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
+	"github.com/future-chocolate6122/qaphi/internal/version"
+	"github.com/future-chocolate6122/qaphi/internal/web"
 )
 
 // DBFileName es el nombre del fichero de base de datos dentro del directorio

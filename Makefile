@@ -25,7 +25,7 @@ COMMIT  ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null)
 # Fecha del último commit (no la hora de compilación) para builds reproducibles.
 DATE    ?= $(shell git log -1 --format=%cI 2>/dev/null)
 
-VPKG    := qaphi/internal/version
+VPKG    := github.com/future-chocolate6122/qaphi/internal/version
 LDFLAGS := -s -w -X $(VPKG).Version=$(VERSION) -X $(VPKG).Commit=$(COMMIT) -X $(VPKG).Date=$(DATE)
 BUILD   := $(GO) build -trimpath -ldflags '$(LDFLAGS)'
 

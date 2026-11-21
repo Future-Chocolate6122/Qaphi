@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"qaphi/internal/store/sqlite"
+	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
 )
 
 func TestValidatePassword(t *testing.T) {

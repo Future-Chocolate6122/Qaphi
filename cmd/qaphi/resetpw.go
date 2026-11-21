@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"qaphi/internal/app"
-	"qaphi/internal/auth"
-	"qaphi/internal/install"
-	"qaphi/internal/msg"
-	"qaphi/internal/store"
-	"qaphi/internal/store/sqlite"
+	"github.com/future-chocolate6122/qaphi/internal/app"
+	"github.com/future-chocolate6122/qaphi/internal/auth"
+	"github.com/future-chocolate6122/qaphi/internal/install"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/store"
+	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
 )
 
 // resetPasswordCmd restablece la contraseña de admin desde la consola.

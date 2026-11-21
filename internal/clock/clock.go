@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"qaphi/internal/version"
+	"github.com/future-chocolate6122/qaphi/internal/version"
 )
 
 // floor es la fecha mínima absoluta que se considera válida si no se conoce

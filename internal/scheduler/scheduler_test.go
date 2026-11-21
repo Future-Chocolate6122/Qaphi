@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"qaphi/internal/checks"
-	"qaphi/internal/model"
-	"qaphi/internal/module"
-	"qaphi/internal/state"
+	"github.com/future-chocolate6122/qaphi/internal/checks"
+	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/state"
 )
 
 // fakeChecker ejecuta fn y mide la concurrencia.

@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/model"
 )
 
 // ResultWriter es la parte del almacenamiento que necesita el buffer.

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/module"
 )
 
 // params normaliza los valores con la declaración registrada del tipo.

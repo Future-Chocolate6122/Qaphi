@@ -6,7 +6,7 @@ Actúa como desarrollador sénior de Go. Vamos a construir **Qaphi**, una aplica
 
 El usuario es administrador de sistemas. La primera instalación será una NanoPi NEO (ARMv7 de 32 bits, 512 MB de RAM, microSD, Armbian), pero **la aplicación debe ser genérica**: nada específico de esa placa ni de ninguna distribución concreta. **Qaphi es solo para Linux.**
 
-> Nombre definitivo: **Qaphi**. Binario `qaphi`, módulo y carpeta del proyecto `qaphi`, variables de entorno con prefijo `QAPHI_`.
+> Nombre definitivo: **Qaphi**. Binario `qaphi`, carpeta del proyecto `qaphi`, módulo Go `github.com/future-chocolate6122/qaphi`, variables de entorno con prefijo `QAPHI_`.
 
 ---
 

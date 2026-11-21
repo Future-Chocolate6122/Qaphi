@@ -3,8 +3,8 @@ package web
 import (
 	"net/url"
 
-	"qaphi/internal/module"
-	"qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 )
 
 // commonInfo declara los campos comunes a todos los checks. Se valida con el

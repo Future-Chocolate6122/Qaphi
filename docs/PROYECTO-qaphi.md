@@ -19,7 +19,7 @@ Actúa como desarrollador sénior de Go. Responde en castellano. Identificadores
 Windows y macOS, varios usuarios o roles, sondas distribuidas, métricas del propio equipo y comprobación de unidades systemd, Docker vía socket, frameworks JS, Node.js en el build y librerías de gráficas.
 
 ## Stack
-- Go, última versión estable (hoy 1.27, fijada en `go.mod`). Módulo `qaphi`.
+- Go, última versión estable (hoy 1.27, fijada en `go.mod`). Módulo `github.com/future-chocolate6122/qaphi`.
 - Librería estándar siempre que se pueda (`net/http` con patrones de Go 1.22+, `html/template`, `log/slog`, `database/sql`).
 - Dependencias permitidas: `modernc.org/sqlite`, `golang.org/x/crypto` (bcrypt) y `golang.org/x/net` (ICMP). **Cualquier otra, consultar antes.**
 - JS opcional: un único fichero pequeño. La interfaz funciona sin JS.
@@ -82,7 +82,7 @@ Flags con su variable de entorno equivalente: `--listen` / `QAPHI_LISTEN` (`:809
 
 ## Decisiones tomadas
 - Solo Linux; arquitecturas amd64, arm64, armv7 y armv6.
-- Go 1.27 (fijado en `go.mod`), módulo `qaphi`.
+- Go 1.27 (fijado en `go.mod`), módulo `github.com/future-chocolate6122/qaphi`. Licencia MIT.
 - SQLite: WAL, `locking_mode=EXCLUSIVE`, `synchronous=FULL`, una conexión, caché de 2 MiB.
 - Instancia única por sistema, autocontenida (bloqueo de SQLite + socket abstracto `@qaphi`).
 - Instalación con `qaphi install` (instalar y actualizar), solo systemd, usuario `qaphi` sin contraseña ni shell, vuelta atrás automática, `uninstall` que conserva datos salvo `--purge`.

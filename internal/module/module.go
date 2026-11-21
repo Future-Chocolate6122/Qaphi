@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"time"
 
-	"qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 )
 
 // FieldType es el tipo de un campo declarado por un módulo. Determina el

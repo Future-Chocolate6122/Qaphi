@@ -7,7 +7,7 @@ import (
 	"context"
 	"time"
 
-	"qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/module"
 )
 
 // Result es lo que devuelve una ejecución de un check.

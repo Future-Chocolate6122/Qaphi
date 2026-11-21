@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"qaphi/internal/auth"
-	"qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/auth"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 )
 
 type authForm struct {

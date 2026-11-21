@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"qaphi/internal/auth"
-	"qaphi/internal/model"
-	"qaphi/internal/msg"
-	"qaphi/internal/state"
-	"qaphi/internal/store"
+	"github.com/future-chocolate6122/qaphi/internal/auth"
+	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/state"
+	"github.com/future-chocolate6122/qaphi/internal/store"
 )
 
 //go:embed templates

@@ -6,7 +6,7 @@ package model
 import (
 	"time"
 
-	"qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/module"
 )
 
 // Check es un servicio monitorizado.
