@@ -15,6 +15,7 @@ El usuario es administrador de sistemas. La primera instalación será una NanoP
 1. **Ligereza medible**
    - Binario final ≤ 20 MB (compilado con `-ldflags="-s -w"`).
    - Consumo de RAM (RSS) ≤ 30 MB con 20 checks activos cada 60 s.
+   - Lo que debe ser ligero es **el servidor**: el navegador puede asumir más carga (JavaScript, gráficas).
 2. **Portabilidad en Linux**: `CGO_ENABLED=0`; compilación cruzada desde un solo equipo para Linux amd64, Linux arm64, Linux armv7 de 32 bits (`GOARCH=arm GOARM=7`) y Linux armv6 (`GOARM=6`, Raspberry Pi Zero/1). **Solo Linux: no se compila para Windows ni macOS.**
 3. **Cero dependencias en el destino**: copiar el binario y ejecutarlo. Plantillas, CSS y JS embebidos con `embed`.
 4. **Amable con el almacenamiento**: pocas escrituras a disco (pensado para microSD), sin perder incidencias ni configuración ante un corte de luz.
@@ -25,11 +26,13 @@ El usuario es administrador de sistemas. La primera instalación será una NanoP
 ## Fuera de alcance (no hacer)
 
 - Windows y macOS: Qaphi solo se desarrolla y se distribuye para Linux.
-- Varios usuarios o roles (hay un único usuario `admin`).
+- Varios usuarios o roles: hay un único usuario `admin` con contraseña (decisión firme).
 - Sondas distribuidas o varios nodos.
 - Métricas del propio equipo (CPU, RAM, temperatura, disco) y comprobación de unidades systemd. Se podrían añadir más adelante como módulo opcional con *build tags*, pero no ahora.
 - Monitorización de Docker vía socket.
-- Frameworks JS (React, Vue…), Node.js en el build y librerías de gráficas.
+- Node.js o npm en el build, y recursos cargados desde internet (CDN).
+- Servir Qaphi en una subruta detrás de un proxy (`https://dominio/qaphi/`): se accede por IP:puerto o por subdominio.
+- Certificados de Let's Encrypt (HTTPS solo con certificado autofirmado).
 
 ---
 
@@ -64,8 +67,20 @@ El usuario es administrador de sistemas. La primera instalación será una NanoP
   - Activado → visible sin login, pero **sin mostrar destinos** (URLs, IPs, puertos). Solo nombre, grupo, estado, uptime, tiempo de respuesta y minigráfica.
   - Con sesión iniciada se muestran también los destinos.
 - Servicios agrupados (Red, Servicios, Externos…), resumen global («3/4 (1 caído)»), uptime 24 h / 7 d / 30 d, últimas incidencias.
-- **Minigráfica de tiempo de respuesta en SVG generado en el servidor**.
-- Modo oscuro (automático con `prefers-color-scheme`) y diseño apto para móvil.
+- **El servidor entrega los datos en JSON y el navegador dibuja** (JavaScript): minigráficas, barras, anillo de uptime… con un acabado tipo Uptime Kuma o mejor. `/home` se actualiza en vivo pidiendo un JSON cada pocos segundos.
+- Temas (Automático, Claro, Oscuro) y diseño apto para móvil.
+
+### Ajustes globales (`/admin`)
+
+Ajustes de toda la instalación, que se cambian en `/admin`:
+
+- **Idioma**: castellano, inglés, alemán o francés. También se elige en `/setup`, preseleccionado según el idioma del navegador. Se traduce **toda la interfaz web**, incluidos los textos de los checks; no se traducen los logs ni la salida técnica de consola. Los mensajes de resultado se guardan como código + datos y se traducen al mostrarlos. Formatos según el idioma (coma decimal, «hace 5 s»). Cada módulo registra sus textos en los cuatro idiomas desde su propio fichero.
+- **Tema**: Automático (sigue al sistema), Claro u Oscuro. Modular: cada tema es un fichero Go que se registra solo y declara sus variables CSS; Qaphi genera con ellas una hoja de estilos cacheable. Se aplica a toda la interfaz, incluidos `/setup` y `/login`.
+- **Zona horaria**: desplegable; por defecto, la del sistema. La base de datos de zonas horarias va incluida en el binario.
+- **Red**:
+  - Dirección de escucha (todas las interfaces, solo local o una IP concreta), **un único puerto** (por defecto **9077**; solo puertos ≥ 1024, porque el servicio no tiene `CAP_NET_BIND_SERVICE`) y protocolo **HTTP o HTTPS** con certificado autofirmado que genera Qaphi (guardado en la base de datos, fuera de la exportación).
+  - El cambio se aplica sin reiniciar. Hay que **confirmarlo en 2 minutos desde la dirección nueva**; si no, se restaura la anterior. Si la dirección nueva no se puede abrir, no se guarda nada.
+  - El flag `--listen` o `QAPHI_LISTEN` prevalece como recurso de emergencia; la web lo muestra como «fijado al arrancar».
 
 ### Tipos de check
 
@@ -104,7 +119,7 @@ Parámetros comunes a todos: nombre, grupo, intervalo, **número de fallos conse
 
 ```
 qaphi serve            # arranca el servidor (por defecto)
-qaphi status           # resumen de una línea: "4/4 (todos up)" o "3/4 (1 caído)"
+qaphi status           # resumen de una línea: "4/4 (all up)" o "3/4 (1 down)"
 qaphi status --json    # el mismo resumen en JSON
 qaphi reset-password   # restablece la contraseña de admin (interactivo)
 qaphi install          # instala o actualiza (desatendido)
@@ -167,7 +182,7 @@ Placas como la NanoPi no tienen reloj de hardware: al arrancar, la hora puede se
   - `modernc.org/sqlite` (SQLite en Go puro, sin CGO)
   - `golang.org/x/crypto` (bcrypt)
   - `golang.org/x/net` (ICMP)
-- JS: opcional, un único fichero pequeño embebido (htmx o JS propio mínimo). La interfaz debe funcionar con JS desactivado, salvo detalles cosméticos.
+- **JavaScript** (se ejecuta en el navegador, no en el servidor): preferiblemente código propio; se admiten librerías pequeñas con licencia MIT o similar, incluidas en el binario y **consultándolo antes**. Sin Node.js ni npm para compilar y sin CDN. Login, setup y formularios de `/admin` funcionan **sin** JavaScript; JavaScript se usa en las páginas de estado de los servicios.
 - **Cualquier otra dependencia requiere consultarlo antes** y justificar su peso.
 
 ### Almacenamiento (SQLite)
@@ -188,7 +203,7 @@ Flags con su equivalente en variable de entorno. No hay rutas fijas.
 
 | Flag | Variable | Por defecto |
 |---|---|---|
-| `--listen` | `QAPHI_LISTEN` | `:8091` |
+| `--listen` | `QAPHI_LISTEN` | lo configurado en la web; `:9077` en una instalación nueva (recurso de emergencia) |
 | `--data-dir` | `QAPHI_DATA_DIR` | `./data` |
 | `--log-level` | `QAPHI_LOG_LEVEL` | `info` |
 | `--log-format` | `QAPHI_LOG_FORMAT` | `text` (o `json`) |
@@ -209,19 +224,20 @@ Flags con su equivalente en variable de entorno. No hay rutas fijas.
 
 ### Seguridad
 
-- Cabeceras: CSP estricta, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`.
+- Cabeceras: CSP estricta (sin scripts ni estilos en línea, sin orígenes externos), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`.
 - Escapado correcto en plantillas (`html/template`), sin HTML generado concatenando cadenas.
 - Secretos (tokens de Telegram, contraseña SMTP…) nunca en los logs.
 - Tokens de API y de heartbeat generados con `crypto/rand`.
 
 ### Logs
 
-`log/slog` a stdout (en texto; JSON opcional), compatible con journald. Bajo journald (variable `JOURNAL_STREAM`) se omite la marca de tiempo propia, que journald ya añade. En nivel `info` solo se registran cambios de estado, nunca cada resultado: journald también escribe en la microSD.
+`log/slog` a stdout (en texto; JSON opcional), compatible con journald. **Mensajes en inglés y nombres de campo en ASCII** (`version`, `duration`, `remote`…), como es habitual en herramientas de sistemas. La salida de consola (`install`, `uninstall`, `reset-password`, `status`) también va en inglés. Bajo journald (variable `JOURNAL_STREAM`) se omite la marca de tiempo propia, que journald ya añade. En nivel `info` solo se registran cambios de estado, nunca cada resultado: journald también escribe en la microSD.
 
 ### Estilo de código
 
-- Identificadores en inglés; **comentarios, mensajes de la interfaz y documentación en castellano**.
-- Textos de la interfaz centralizados, para facilitar una traducción futura.
+- Identificadores en inglés; **comentarios del código y documentación en castellano**; logs y consola en inglés; interfaz web traducida a los cuatro idiomas.
+- Textos de la interfaz centralizados en catálogos por idioma; un test exige que todas las claves existan en los cuatro.
+- Nombres que se guardan (IDs de módulos, claves de campos y de ajustes, variables CSS de los temas) son estables: inglés, snake_case, sin renombrar sin migración.
 - Código formateado con `gofmt` y sin avisos de `go vet`.
 
 ---
@@ -230,13 +246,15 @@ Flags con su equivalente en variable de entorno. No hay rutas fijas.
 
 ```
 qaphi/
-├── cmd/qaphi/main.go          # subcomandos: serve, status, reset-password, install, version
+├── cmd/qaphi/main.go          # subcomandos: serve, status, reset-password, install, uninstall, version
 ├── internal/
 │   ├── app/                   # ensamblado y ciclo de vida (arranque, parada ordenada)
 │   ├── config/                # flags + variables de entorno
 │   ├── logging/               # logger slog
 │   ├── module/                # registro genérico de módulos y declaración de campos
-│   ├── msg/                   # textos de la interfaz centralizados
+│   ├── msg/                   # catálogos de textos por idioma (es, en, de, fr)
+│   ├── theme/                 # registro de temas (variables CSS)
+│   ├── netcfg/                # red: escucha, HTTP/HTTPS, certificado, confirmación
 │   ├── version/               # versión inyectada al compilar
 │   ├── store/                 # interfaz Store
 │   │   └── sqlite/            # implementación + migraciones embebidas
@@ -247,7 +265,7 @@ qaphi/
 │   ├── auth/                  # setup, login, sesiones, CSRF, rate limit
 │   ├── instance/              # bloqueo de instancia única
 │   ├── install/               # install, uninstall, actualización y vuelta atrás (systemd)
-│   └── web/                   # handlers, plantillas y estáticos embebidos, SVG
+│   └── web/                   # handlers, plantillas, CSS y JavaScript embebidos
 ├── deploy/
 │   └── qaphi.service          # unit de systemd de referencia (misma plantilla que el instalador)
 ├── Makefile                   # build, test, cross-compile
@@ -289,23 +307,32 @@ La estructura puede ajustarse si hay una razón clara, explicándola.
 - Comprobación del reloj antes de registrar resultados.
 - ✅ Criterio: desde cero, configurar la contraseña, crear 3 checks y verlos actualizarse en `/home`. Tras reiniciar, los datos persisten (salvo como mucho el último intervalo de volcado). Una segunda instancia no arranca. En la NanoPi, `sudo ./qaphi install` instala y arranca el servicio, y ejecutar un binario nuevo lo actualiza conservando los datos.
 
-**Fase 2 — Checks completos y estado**
+**Fase 2 — Ajustes, idiomas, temas y base de JavaScript** (`v0.2.0`)
+- Logs y salida de consola en inglés.
+- Idiomas (es, en, de, fr): catálogos, selector en `/setup` y `/admin`, mensajes de resultado traducibles, formatos por idioma.
+- Temas modulares: Automático, Claro y Oscuro.
+- Zona horaria configurable.
+- Red: dirección, puerto (9077), HTTP/HTTPS con certificado autofirmado, cambio con confirmación de 2 minutos y vuelta atrás.
+- Página de ajustes en `/admin`.
+- Base de JavaScript: estructura, CSP y actualización en vivo de `/home` por JSON.
+- ✅ Criterio: cambiar idioma y tema y verlos aplicados en todas las páginas; pasar a HTTPS en otro puerto y confirmar; repetir sin confirmar y comprobar que vuelve sola a la configuración anterior.
+
+**Fase 3 — Checks completos y estado** (`v0.3.0`)
 - Palabra clave, caducidad TLS, ICMP (con estado «sin permisos»), DNS, heartbeat.
 - Confirmación de N fallos, incidencias, agregados por hora, uptime 24 h / 7 d / 30 d, retención y limpieza, modo «solo agregados».
-- Minigráficas SVG, grupos, modo oscuro, ajuste de página pública con ocultación de destinos.
+- Componentes visuales dibujados en el navegador, grupos, ajuste de página pública con ocultación de destinos.
 - ✅ Criterio: provocar la caída de un servicio y que se registre una incidencia con su duración. El modo público no muestra ningún destino.
 
-**Fase 3 — Avisos e integración**
+**Fase 4 — Avisos e integración** (`v0.4.0`)
 - Canales ntfy, Telegram, webhook y SMTP con «Enviar prueba».
 - Dependencias entre checks y modo mantenimiento.
 - API JSON, tokens de API, `qaphi status` (socket local) y exportar/importar configuración.
 - ✅ Criterio: un aviso al caer y otro al recuperarse, sin repeticiones. Con el padre caído, los hijos no avisan. `qaphi status` devuelve el resumen correcto.
 
-**Fase 4 — Pulido y entrega**
+**Fase 5 — Pulido y entrega** (`v1.0.0`)
 - Revisión de seguridad (cabeceras, CSRF, escapado, secretos fuera de los logs).
 - **Medición real**: tamaño del binario y RSS con 20 checks a 60 s durante 30 min. Si se superan los objetivos, optimizar (`GOMEMLIMIT`, `cache_size`, asignaciones).
 - `README.md`: instalación, flags, primer inicio, `qaphi status` en el MOTD, unit de systemd, formato del webhook, permisos ICMP en Linux (`ping_group_range` o `CAP_NET_RAW`).
-- `deploy/qaphi.service` de referencia, generado desde la misma plantilla que usa el instalador.
 - `install.sh` y publicación de los binarios en GitHub Releases.
 - ✅ Criterio: todos los goals cumplidos y documentados con las cifras medidas.
 
@@ -316,7 +343,9 @@ La estructura puede ajustarse si hay una razón clara, explicándola.
 - **Plataformas**: solo Linux (amd64, arm64, armv7 y armv6). Sin Windows ni macOS.
 - **Instancia única** por sistema, autocontenida, con bloqueo exclusivo de SQLite.
 - **Instalación**: `qaphi install`, solo systemd, usuario `qaphi` sin contraseña ni shell, vuelta atrás automática.
-- **Versiones**: etiquetas semver; cada fase cerrada es `v0.N.0` (fase 1 → `v0.1.0`), correcciones `v0.N.x`, `v1.0.0` al terminar la fase 4.
+- **Versiones**: etiquetas semver; cada fase cerrada es `v0.N.0` (fase 1 → `v0.1.0`), correcciones `v0.N.x`, `v1.0.0` al terminar la fase 5.
+- **Licencia**: MIT (titular: Future-Chocolate6122).
 - **Métricas del equipo y systemd**: fuera de esta versión.
-- **Puerto por defecto**: 8091.
+- **Puerto por defecto**: 9077, un único puerto HTTP o HTTPS. Las instalaciones de `v0.1.0` que ya existan conservan el 8091 al actualizar.
+- **Idioma, tema y zona horaria**: ajustes globales en `/admin`.
 - **Página de estado pública**: desactivada por defecto.
