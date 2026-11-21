@@ -1,11 +1,11 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/future-chocolate6122/qaphi/internal/checks"
 	"github.com/future-chocolate6122/qaphi/internal/model"
@@ -15,28 +15,31 @@ import (
 	"github.com/future-chocolate6122/qaphi/internal/store"
 )
 
-// checkRow es una fila de las tablas de /home y /admin.
+// checkRow es una fila de las tablas de /home y /admin, ya traducida. Es
+// también lo que se envía en el JSON de actualización en vivo.
 type checkRow struct {
-	ID          int64
-	Name        string
-	Group       string
-	TypeName    string // clave de texto
-	Target      string
-	Status      model.Status
-	StatusLabel string // clave de texto
-	Latency     string
-	Last        string
-	Message     string
-	Interval    string
+	ID          int64        `json:"id"`
+	Name        string       `json:"-"`
+	Group       string       `json:"-"`
+	TypeName    string       `json:"-"` // clave de texto
+	Target      string       `json:"-"`
+	Status      model.Status `json:"status"`
+	StatusLabel string       `json:"status_label"`
+	Latency     string       `json:"latency"`
+	Last        string       `json:"last"`
+	LastTitle   string       `json:"last_title"` // fecha y hora absolutas
+	Message     string       `json:"message"`
+	Interval    string       `json:"-"`
 }
 
-func (s *Server) rows(cs []model.Check, snap map[int64]state.CheckState) []checkRow {
+func (s *Server) rows(l msg.Lang, cs []model.Check, snap map[int64]state.CheckState) []checkRow {
 	now := s.Now()
+	loc := s.Settings.Location()
 	out := make([]checkRow, 0, len(cs))
 	for _, c := range cs {
 		row := checkRow{
 			ID: c.ID, Name: c.Name, Group: c.Group, TypeName: c.Type,
-			Status: model.StatusUnknown, Latency: "—", Last: msg.T("time.never"),
+			Status: model.StatusUnknown, Latency: "—", Last: msg.T(l, "time.never"),
 			Interval: shortDuration(c.Interval),
 		}
 		if e, ok := checks.Registry.Lookup(c.Type); ok {
@@ -46,38 +49,62 @@ func (s *Server) rows(cs []model.Check, snap map[int64]state.CheckState) []check
 		if st, ok := snap[c.ID]; ok {
 			row.Status = st.Status
 			if st.HasLast {
-				row.Latency = formatLatency(st.Last.Latency)
-				row.Last = ago(now, st.Last.At)
-				row.Message = st.Last.Message
+				row.Latency = formatLatency(l, st.Last.Latency)
+				row.Last = ago(l, now, st.Last.At)
+				row.LastTitle = formatDateTime(l, loc, st.Last.At)
+				row.Message = msg.Decode(st.Last.Message).In(l)
 			}
 		}
 		if c.Paused {
 			row.Status = model.StatusPaused
 		}
-		row.StatusLabel = "status." + string(row.Status)
+		row.StatusLabel = msg.T(l, "status."+string(row.Status))
 		out = append(out, row)
 	}
 	return out
 }
 
 type homeView struct {
-	Summary string
-	Level   model.Status
-	Rows    []checkRow
+	Summary string       `json:"summary"`
+	Level   model.Status `json:"level"`
+	Rows    []checkRow   `json:"checks"`
+}
+
+func (s *Server) homeData(r *http.Request) (homeView, error) {
+	cs, err := s.Store.ListChecks(r.Context())
+	if err != nil {
+		return homeView{}, err
+	}
+	l := s.lang(r)
+	snap := s.Tracker.Snapshot()
+	sum := state.Summarize(cs, snap)
+	return homeView{Summary: sum.In(l), Level: sum.Level(), Rows: s.rows(l, cs, snap)}, nil
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	cs, err := s.Store.ListChecks(r.Context())
+	v, err := s.homeData(r)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	snap := s.Tracker.Snapshot()
-	sum := state.Summarize(cs, snap)
 	s.render(w, r, http.StatusOK, "home", pageData{
-		Title: msg.T("home.title"), Active: "home", Refresh: 30,
-		Body: homeView{Summary: sum.String(), Level: sum.Level(), Rows: s.rows(cs, snap)},
+		Title: s.T(r, "home.title"), Active: "home", Live: "/home/state.json", Body: v,
 	})
+}
+
+// handleHomeState devuelve el estado de /home en JSON, ya traducido y
+// formateado: el JavaScript de la página solo tiene que colocarlo.
+func (s *Server) handleHomeState(w http.ResponseWriter, r *http.Request) {
+	v, err := s.homeData(r)
+	if err != nil {
+		s.Log.Error("home state failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "application/json; charset=utf-8")
+	h.Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 type adminView struct {
@@ -99,9 +126,10 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
+	l := s.lang(r)
 	s.render(w, r, http.StatusOK, "admin", pageData{
-		Title: msg.T("admin.title"), Active: "admin", Flash: flash(r.URL.Query()),
-		Body: adminView{Rows: s.rows(cs, s.Tracker.Snapshot()), Types: checkTypes()},
+		Title: msg.T(l, "admin.title"), Active: "admin", Flash: flash(l, r.URL.Query()),
+		Body: adminView{Rows: s.rows(l, cs, s.Tracker.Snapshot()), Types: checkTypes()},
 	})
 }
 
@@ -120,24 +148,26 @@ func (s *Server) renderCheckForm(w http.ResponseWriter, r *http.Request, status 
 }
 
 func (s *Server) handleCheckNew(w http.ResponseWriter, r *http.Request) {
+	l := s.lang(r)
 	typ := r.URL.Query().Get("type")
 	e, ok := checks.Registry.Lookup(typ)
 	if !ok {
 		s.render(w, r, http.StatusOK, "check_type", pageData{
-			Title: msg.T("admin.choose_type"), Active: "admin", Body: checkTypes(),
+			Title: msg.T(l, "admin.choose_type"), Active: "admin", Body: checkTypes(),
 		})
 		return
 	}
-	s.renderCheckForm(w, r, http.StatusOK, msg.F("check.new.title", msg.T(e.Info.Name)), checkFormView{
+	s.renderCheckForm(w, r, http.StatusOK, msg.F(l, "check.new.title", msg.T(l, e.Info.Name)), checkFormView{
 		Action: "/admin/checks", TypeID: typ, TypeName: e.Info.Name,
-		Common: buildFields(commonInfo, "", nil, nil, nil),
-		Params: buildFields(e.Info, paramPrefix, nil, nil, nil),
+		Common: buildFields(l, commonInfo, "", nil, nil, nil),
+		Params: buildFields(l, e.Info, paramPrefix, nil, nil, nil),
 	})
 }
 
 // parseCheck valida el formulario. Si hay errores, devuelve la vista del
 // formulario con los valores introducidos para volver a mostrarla.
 func (s *Server) parseCheck(r *http.Request, e module.Entry[checks.Checker], saved module.Values) (model.Check, *checkFormView) {
+	l := s.lang(r)
 	rawCommon := readValues(r.PostForm, commonInfo, "", nil)
 	rawParams := readValues(r.PostForm, e.Info, paramPrefix, saved)
 
@@ -148,14 +178,14 @@ func (s *Server) parseCheck(r *http.Request, e module.Entry[checks.Checker], sav
 	}
 	if cerrs == nil && perrs == nil {
 		if timeout := e.Impl.Timeout(params); timeout >= common.Duration("interval") {
-			cerrs = module.Errors{"interval": msg.T("check.err.interval_timeout")}
+			cerrs = module.Errors{"interval": msg.New("check.err.interval_timeout")}
 		}
 	}
 	if cerrs != nil || perrs != nil {
 		return model.Check{}, &checkFormView{
 			TypeID: e.Info.ID, TypeName: e.Info.Name, HasError: true,
-			Common: buildFields(commonInfo, "", rawCommon, cerrs, nil),
-			Params: buildFields(e.Info, paramPrefix, rawParams, perrs, saved),
+			Common: buildFields(l, commonInfo, "", rawCommon, cerrs, nil),
+			Params: buildFields(l, e.Info, paramPrefix, rawParams, perrs, saved),
 		}
 	}
 	return model.Check{
@@ -174,10 +204,11 @@ func (s *Server) handleCheckCreate(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusBadRequest, "http.notfound")
 		return
 	}
+	l := s.lang(r)
 	c, fv := s.parseCheck(r, e, nil)
 	if fv != nil {
 		fv.Action = "/admin/checks"
-		s.renderCheckForm(w, r, http.StatusUnprocessableEntity, msg.F("check.new.title", msg.T(e.Info.Name)), *fv)
+		s.renderCheckForm(w, r, http.StatusUnprocessableEntity, msg.F(l, "check.new.title", msg.T(l, e.Info.Name)), *fv)
 		return
 	}
 	if err := s.Store.CreateCheck(r.Context(), &c); err != nil {
@@ -186,7 +217,7 @@ func (s *Server) handleCheckCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Tracker.SetPaused(c.ID, c.Paused)
 	s.Scheduler.Set(c)
-	s.Log.Info("check creado", "check", c.Name, "tipo", c.Type)
+	s.Log.Info("check created", "check", c.Name, "type", c.Type)
 	redirect(w, r, "/admin?m=created")
 }
 
@@ -219,13 +250,14 @@ func (s *Server) handleCheckEdit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	l := s.lang(r)
 	common := module.Values{
 		"name": c.Name, "group": c.Group, "interval": c.Interval.String(), "paused": strconv.FormatBool(c.Paused),
 	}
-	s.renderCheckForm(w, r, http.StatusOK, msg.F("check.edit.title", c.Name), checkFormView{
+	s.renderCheckForm(w, r, http.StatusOK, msg.F(l, "check.edit.title", c.Name), checkFormView{
 		Action: fmt.Sprintf("/admin/checks/%d", c.ID), TypeID: c.Type, TypeName: e.Info.Name,
-		Common: buildFields(commonInfo, "", common, nil, nil),
-		Params: buildFields(e.Info, paramPrefix, c.Params, nil, c.Params),
+		Common: buildFields(l, commonInfo, "", common, nil, nil),
+		Params: buildFields(l, e.Info, paramPrefix, c.Params, nil, c.Params),
 	})
 }
 
@@ -237,7 +269,7 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 	c, fv := s.parseCheck(r, e, old.Params)
 	if fv != nil {
 		fv.Action = fmt.Sprintf("/admin/checks/%d", old.ID)
-		s.renderCheckForm(w, r, http.StatusUnprocessableEntity, msg.F("check.edit.title", old.Name), *fv)
+		s.renderCheckForm(w, r, http.StatusUnprocessableEntity, msg.F(s.lang(r), "check.edit.title", old.Name), *fv)
 		return
 	}
 	c.ID, c.CreatedAt = old.ID, old.CreatedAt
@@ -247,7 +279,7 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Tracker.SetPaused(c.ID, c.Paused)
 	s.Scheduler.Set(c)
-	s.Log.Info("check modificado", "check", c.Name)
+	s.Log.Info("check updated", "check", c.Name)
 	redirect(w, r, "/admin?m=updated")
 }
 
@@ -256,7 +288,7 @@ func (s *Server) handleCheckDeleteForm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.render(w, r, http.StatusOK, "check_delete", pageData{Title: msg.T("delete.title"), Active: "admin", Body: c})
+	s.render(w, r, http.StatusOK, "check_delete", pageData{Title: s.T(r, "delete.title"), Active: "admin", Body: c})
 }
 
 func (s *Server) handleCheckDelete(w http.ResponseWriter, r *http.Request) {
@@ -270,52 +302,6 @@ func (s *Server) handleCheckDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Scheduler.Remove(c.ID)
 	s.Tracker.Remove(c.ID)
-	s.Log.Info("check borrado", "check", c.Name)
+	s.Log.Info("check deleted", "check", c.Name)
 	redirect(w, r, "/admin?m=deleted")
-}
-
-// ---------------------------------------------------------------- formato
-
-// formatLatency: «0.4 ms», «12 ms», «1.2 s».
-func formatLatency(d time.Duration) string {
-	switch {
-	case d <= 0:
-		return "—"
-	case d < 10*time.Millisecond:
-		return fmt.Sprintf("%.1f ms", float64(d.Microseconds())/1000)
-	case d < 10*time.Second:
-		return fmt.Sprintf("%d ms", d.Milliseconds())
-	default:
-		return fmt.Sprintf("%.1f s", d.Seconds())
-	}
-}
-
-// ago: «hace 5 s», «hace 3 min»…
-func ago(now, t time.Time) string {
-	d := now.Sub(t)
-	switch {
-	case t.IsZero():
-		return msg.T("time.never")
-	case d < time.Second:
-		return msg.T("time.now")
-	case d < time.Minute:
-		return msg.F("time.ago.s", int64(d/time.Second))
-	case d < time.Hour:
-		return msg.F("time.ago.m", int64(d/time.Minute))
-	case d < 48*time.Hour:
-		return msg.F("time.ago.h", int64(d/time.Hour))
-	default:
-		return msg.F("time.ago.d", int64(d/(24*time.Hour)))
-	}
-}
-
-// shortDuration: «1m0s» → «1m», «1h30m0s» → «1h30m».
-func shortDuration(d time.Duration) string {
-	s := d.String()
-	for _, suf := range []string{"m0s", "h0m"} {
-		if len(s) > len(suf) && s[len(s)-len(suf):] == suf {
-			s = s[:len(s)-2]
-		}
-	}
-	return s
 }

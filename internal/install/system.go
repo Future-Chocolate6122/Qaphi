@@ -71,7 +71,7 @@ func (OS) LookupUser(name string) (int, int, bool, error) {
 	uid, err1 := strconv.Atoi(u.Uid)
 	gid, err2 := strconv.Atoi(u.Gid)
 	if err1 != nil || err2 != nil {
-		return 0, 0, false, fmt.Errorf("UID/GID no numéricos para %s", name)
+		return 0, 0, false, fmt.Errorf("non-numeric UID/GID for %s", name)
 	}
 	return uid, gid, true, nil
 }

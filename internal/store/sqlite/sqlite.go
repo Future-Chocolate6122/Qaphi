@@ -49,11 +49,11 @@ var _ store.Store = (*Store)(nil)
 // migraciones pendientes. El directorio debe existir.
 func Open(ctx context.Context, path string) (*Store, error) {
 	if strings.Contains(path, "?") {
-		return nil, errors.New("la ruta de la base de datos no puede contener '?'")
+		return nil, errors.New("the database path cannot contain '?'")
 	}
 	db, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
-		return nil, fmt.Errorf("abrir %s: %w", path, err)
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	// Una única conexión, que se mantiene abierta durante toda la ejecución:
 	// los PRAGMA de la DSN se aplican al abrirla.
@@ -92,19 +92,19 @@ func dsn(path string) string {
 
 func (s *Store) init(ctx context.Context) error {
 	if err := s.db.PingContext(ctx); err != nil {
-		return fmt.Errorf("abrir %s: %w", s.path, wrapLocked(err))
+		return fmt.Errorf("open %s: %w", s.path, wrapLocked(err))
 	}
 	var mode string
 	if err := s.db.QueryRowContext(ctx, `PRAGMA journal_mode`).Scan(&mode); err != nil {
-		return fmt.Errorf("comprobar modo de diario: %w", wrapLocked(err))
+		return fmt.Errorf("check journal mode: %w", wrapLocked(err))
 	}
 	if !strings.EqualFold(mode, "wal") {
-		return fmt.Errorf("no se pudo activar el modo WAL en %s (modo actual: %s); ¿está el directorio de datos en un sistema de ficheros de red?", s.path, mode)
+		return fmt.Errorf("could not enable WAL mode on %s (current mode: %s); is the data directory on a network file system?", s.path, mode)
 	}
 	// Una escritura (aunque no cambie nada) obliga a tomar ya el bloqueo
 	// exclusivo de escritura, en lugar de esperar a la primera escritura real.
 	if _, err := s.db.ExecContext(ctx, `BEGIN IMMEDIATE; COMMIT`); err != nil {
-		return fmt.Errorf("bloquear %s: %w", s.path, wrapLocked(err))
+		return fmt.Errorf("lock %s: %w", s.path, wrapLocked(err))
 	}
 	if _, err := migrate(ctx, s.db, embeddedMigrations); err != nil {
 		return wrapLocked(err)
@@ -138,7 +138,7 @@ func (s *Store) GetSetting(ctx context.Context, key string) (string, bool, error
 	case errors.Is(err, sql.ErrNoRows):
 		return "", false, nil
 	case err != nil:
-		return "", false, fmt.Errorf("leer ajuste %q: %w", key, err)
+		return "", false, fmt.Errorf("read setting %q: %w", key, err)
 	}
 	return v, true, nil
 }
@@ -150,7 +150,7 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
 		key, value, time.Now().Unix())
 	if err != nil {
-		return fmt.Errorf("guardar ajuste %q: %w", key, err)
+		return fmt.Errorf("save setting %q: %w", key, err)
 	}
 	return nil
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/future-chocolate6122/qaphi/internal/checks"
 	"github.com/future-chocolate6122/qaphi/internal/model"
 	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 	"github.com/future-chocolate6122/qaphi/internal/state"
 )
 
@@ -38,12 +39,6 @@ const (
 	// editDelay es el retraso máximo con el que se ejecuta un check recién
 	// creado o modificado.
 	editDelay = 2 * time.Second
-)
-
-// Mensajes de resultado generados por el propio planificador.
-var (
-	MsgTimeout = "tiempo agotado"
-	MsgPanic   = "error interno del check"
 )
 
 // ClockGuard indica si la hora del sistema es válida.
@@ -216,7 +211,7 @@ func (s *Scheduler) dispatch(ctx context.Context) time.Duration {
 				if !ok {
 					if !s.unknown[j.check.Type] {
 						s.unknown[j.check.Type] = true
-						s.log.Warn("tipo de check no disponible en este binario; se omite", "tipo", j.check.Type, "check", j.check.Name)
+						s.log.Warn("check type not available in this binary; skipping", "type", j.check.Type, "check", j.check.Name)
 					}
 					j.next = now.Add(j.check.Interval)
 				} else {
@@ -270,14 +265,14 @@ func (s *Scheduler) execute(ctx context.Context, id, gen int64, c model.Check, c
 		return // el check se borró o se modificó mientras se ejecutaba
 	}
 
-	tr := s.rec.Record(model.Result{CheckID: c.ID, At: start, OK: r.OK, Latency: r.Latency, Message: r.Message})
+	tr := s.rec.Record(model.Result{CheckID: c.ID, At: start, OK: r.OK, Latency: r.Latency, Message: r.Message.Encode()})
 	// En info solo se registran los cambios de estado, nunca cada resultado
 	// (journald también escribe en disco).
 	switch {
 	case tr.Changed && tr.To == model.StatusDown:
-		s.log.Warn("check caído", "check", c.Name, "motivo", r.Message)
+		s.log.Warn("check down", "check", c.Name, "reason", r.Message.String())
 	case tr.Changed && tr.From == model.StatusDown:
-		s.log.Info("check recuperado", "check", c.Name)
+		s.log.Info("check recovered", "check", c.Name)
 	}
 }
 
@@ -294,8 +289,8 @@ func (s *Scheduler) runCheck(ctx context.Context, c model.Check, checker checks.
 	go func() {
 		defer func() {
 			if v := recover(); v != nil {
-				s.log.Error("pánico en un check", "check", c.Name, "tipo", c.Type, "pánico", fmt.Sprint(v), "pila", string(debug.Stack()))
-				done <- checks.Result{Message: MsgPanic}
+				s.log.Error("panic in check", "check", c.Name, "type", c.Type, "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
+				done <- checks.Result{Message: msg.New(checks.MsgPanic)}
 			}
 		}()
 		done <- checker.Check(cctx, cloneParams(c.Params))
@@ -307,8 +302,8 @@ func (s *Scheduler) runCheck(ctx context.Context, c model.Check, checker checks.
 	case r := <-done:
 		return r
 	case <-abandon.C:
-		s.log.Warn("un check no respetó su tiempo máximo y se abandona", "check", c.Name, "tipo", c.Type)
-		return checks.Result{Latency: timeout, Message: MsgTimeout}
+		s.log.Warn("check ignored its timeout and was abandoned", "check", c.Name, "type", c.Type)
+		return checks.Result{Latency: timeout, Message: msg.New(checks.MsgTimeout)}
 	case <-ctx.Done():
 		// Parada: el check recibe la cancelación; se le da un margen para
 		// terminar limpiamente antes de abandonarlo.
@@ -318,7 +313,7 @@ func (s *Scheduler) runCheck(ctx context.Context, c model.Check, checker checks.
 		case r := <-done:
 			return r
 		case <-t.C:
-			return checks.Result{Message: MsgTimeout}
+			return checks.Result{Message: msg.New(checks.MsgTimeout)}
 		}
 	}
 }

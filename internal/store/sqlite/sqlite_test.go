@@ -200,21 +200,21 @@ func TestMigrate(t *testing.T) {
 		if _, err := migrate(ctx, db, mig(v2)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := migrate(ctx, db, mig(v1)); err == nil || !strings.Contains(err.Error(), "más reciente") {
+		if _, err := migrate(ctx, db, mig(v1)); err == nil || !strings.Contains(err.Error(), "newer qaphi version") {
 			t.Fatalf("se esperaba error de versión futura: %v", err)
 		}
 	})
 
 	t.Run("numeración con huecos", func(t *testing.T) {
 		gap := map[string]string{"0001_a.sql": "SELECT 1;", "0003_c.sql": "SELECT 1;"}
-		if _, err := migrate(ctx, rawDB(t), mig(gap)); err == nil || !strings.Contains(err.Error(), "consecutivas") {
+		if _, err := migrate(ctx, rawDB(t), mig(gap)); err == nil || !strings.Contains(err.Error(), "non-consecutive") {
 			t.Fatalf("se esperaba error de numeración: %v", err)
 		}
 	})
 
 	t.Run("nombre no válido", func(t *testing.T) {
 		bad := map[string]string{"1_a.sql": "SELECT 1;"}
-		if _, err := migrate(ctx, rawDB(t), mig(bad)); err == nil || !strings.Contains(err.Error(), "nombre de migración") {
+		if _, err := migrate(ctx, rawDB(t), mig(bad)); err == nil || !strings.Contains(err.Error(), "invalid migration name") {
 			t.Fatalf("se esperaba error de nombre: %v", err)
 		}
 	})

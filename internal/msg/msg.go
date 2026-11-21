@@ -1,164 +1,236 @@
-// Package msg centraliza los textos de la interfaz para facilitar una
-// traducción futura. Los textos generales están en este fichero; cada módulo
-// (check, aviso, componente) registra los suyos con Register desde su propio
-// fichero, de modo que añadir o quitar un módulo no obliga a tocar este.
+// Package msg centraliza los textos de la interfaz web en cuatro idiomas
+// (castellano, inglés, alemán y francés).
 //
-// Los mensajes de log no pasan por aquí: van dirigidos al administrador del
-// sistema y se escriben directamente en el código.
+// Cada texto se registra con sus cuatro traducciones juntas (Text), de modo
+// que una traducción que falte es un error de programación que se detecta al
+// arrancar. Los textos generales están en texts.go; cada módulo (check,
+// aviso, tema…) registra los suyos con Register desde su propio fichero, así
+// que añadir o quitar un módulo no obliga a tocar este paquete.
+//
+// Los logs y la salida de consola no pasan por aquí: van en inglés y se
+// escriben directamente en el código.
 package msg
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
-var mu sync.RWMutex
+// Lang es un código de idioma admitido.
+type Lang string
 
-// es contiene los textos en castellano, indexados por clave estable.
-var es = map[string]string{
-	// Generales
-	"app.name":    "Qaphi",
-	"app.tagline": "Monitor de servicios",
+// Idiomas admitidos.
+const (
+	ES Lang = "es"
+	EN Lang = "en"
+	DE Lang = "de"
+	FR Lang = "fr"
+)
 
-	// Navegación
-	"nav.home":   "Estado",
-	"nav.admin":  "Administración",
-	"nav.logout": "Cerrar sesión",
+// Default es el idioma de reserva cuando no se puede deducir otro.
+const Default = EN
 
-	// Configuración inicial
-	"setup.title":      "Configuración inicial",
-	"setup.intro":      "Elige la contraseña del usuario admin. Para comprobar que tienes acceso al equipo, introduce también el token de configuración que Qaphi escribe en su log al arrancar.",
-	"setup.token":      "Token de configuración",
-	"setup.token.help": "En una instalación con systemd: journalctl -u qaphi | grep token",
-	"setup.password":   "Contraseña",
-	"setup.confirm":    "Repite la contraseña",
-	"setup.submit":     "Guardar y entrar",
-	"setup.err.token":  "El token de configuración no es correcto.",
-
-	// Inicio de sesión
-	"login.title":    "Iniciar sesión",
-	"login.user":     "Usuario",
-	"login.password": "Contraseña",
-	"login.submit":   "Entrar",
-	"login.err":      "Contraseña incorrecta.",
-	"login.locked":   "Demasiados intentos fallidos. Vuelve a intentarlo en %s.",
-
-	// Contraseñas
-	"auth.err.password_short":    "La contraseña debe tener al menos 10 caracteres.",
-	"auth.err.password_long":     "La contraseña no puede superar los 72 bytes.",
-	"auth.err.password_mismatch": "Las contraseñas no coinciden.",
-
-	// Página de estado
-	"home.title":       "Estado de los servicios",
-	"home.empty":       "Todavía no hay checks configurados.",
-	"home.empty.admin": "Créalos en Administración.",
-	"home.recent":      "Se actualiza automáticamente cada 30 segundos.",
-	"col.name":         "Nombre",
-	"col.group":        "Grupo",
-	"col.type":         "Tipo",
-	"col.target":       "Destino",
-	"col.status":       "Estado",
-	"col.latency":      "Respuesta",
-	"col.last":         "Última comprobación",
-	"col.detail":       "Detalle",
-	"col.interval":     "Intervalo",
-	"col.actions":      "Acciones",
-	"status.up":        "Operativo",
-	"status.down":      "Caído",
-	"status.unknown":   "Sin datos",
-	"status.paused":    "Pausado",
-	"time.never":       "nunca",
-	"time.now":         "ahora",
-	"time.ago.s":       "hace %d s",
-	"time.ago.m":       "hace %d min",
-	"time.ago.h":       "hace %d h",
-	"time.ago.d":       "hace %d d",
-
-	// Administración
-	"admin.title":                "Administración",
-	"admin.checks":               "Checks",
-	"admin.new":                  "Nuevo check",
-	"admin.edit":                 "Editar",
-	"admin.delete":               "Borrar",
-	"admin.empty":                "No hay checks todavía.",
-	"admin.choose_type":          "Elige el tipo de check",
-	"check.new.title":            "Nuevo check · %s",
-	"check.edit.title":           "Editar check · %s",
-	"check.f.common":             "Datos generales",
-	"check.f.params":             "Parámetros",
-	"check.f.name":               "Nombre",
-	"check.f.group":              "Grupo",
-	"check.f.group.help":         "Opcional, p. ej. Red, Servicios o Externos.",
-	"check.f.interval":           "Intervalo",
-	"check.f.interval.help":      "Cada cuánto se comprueba (entre 10s y 24h).",
-	"check.f.paused":             "Pausado (no se comprueba)",
-	"check.err.interval_timeout": "El intervalo debe ser mayor que el tiempo máximo del check.",
-	"form.save":                  "Guardar",
-	"form.cancel":                "Cancelar",
-	"form.errors":                "Revisa los campos marcados.",
-	"form.secret.keep":           "Déjalo vacío para conservar el valor actual.",
-	"delete.title":               "Borrar check",
-	"delete.confirm":             "¿Seguro que quieres borrar «%s»? También se borrará su historial.",
-	"delete.submit":              "Borrar definitivamente",
-	"flash.created":              "Check creado. Se comprobará en unos segundos.",
-	"flash.updated":              "Check guardado.",
-	"flash.deleted":              "Check borrado.",
-	"flash.welcome":              "Contraseña guardada. Ya puedes crear tus checks.",
-
-	// Errores HTTP
-	"http.notfound":  "Página no encontrada.",
-	"http.forbidden": "La sesión del formulario no es válida o ha caducado. Vuelve a cargar la página e inténtalo de nuevo.",
-	"http.toolarge":  "El formulario es demasiado grande.",
-	"http.error":     "Error",
-	"http.internal":  "Error interno del servidor.",
-
-	// Validación de campos de módulos
-	"field.required":     "Este campo es obligatorio.",
-	"field.too_long":     "Admite como máximo %d caracteres.",
-	"field.int":          "Debe ser un número entero.",
-	"field.int_min":      "Debe ser como mínimo %s.",
-	"field.int_max":      "Debe ser como máximo %s.",
-	"field.duration":     "Duración no válida (ejemplos: 30s, 5m, 1h).",
-	"field.duration_min": "Debe ser como mínimo %s.",
-	"field.duration_max": "Debe ser como máximo %s.",
-	"field.bool":         "Valor no válido.",
-	"field.select":       "Opción no válida.",
+// Language describe un idioma para los selectores. El nombre va siempre en
+// el propio idioma («Deutsch», no «Alemán»).
+type Language struct {
+	Code Lang
+	Name string
 }
 
-// T devuelve el texto asociado a key. Si no existe, devuelve la propia clave
-// para que la ausencia sea visible sin romper la página.
-func T(key string) string {
-	mu.RLock()
-	s, ok := es[key]
-	mu.RUnlock()
-	if ok {
-		return s
+var languages = []Language{{ES, "Español"}, {EN, "English"}, {DE, "Deutsch"}, {FR, "Français"}}
+
+// Languages devuelve los idiomas admitidos.
+func Languages() []Language { return append([]Language(nil), languages...) }
+
+// Parse valida un código de idioma.
+func Parse(s string) (Lang, bool) {
+	for _, l := range languages {
+		if string(l.Code) == s {
+			return l.Code, true
+		}
 	}
-	return key
+	return "", false
 }
 
-// F formatea el texto asociado a key con fmt.Sprintf.
-func F(key string, args ...any) string {
-	return fmt.Sprintf(T(key), args...)
+// Text son las cuatro traducciones de un texto.
+type Text struct{ ES, EN, DE, FR string }
+
+// Tr construye un Text a partir de sus traducciones, en el orden castellano,
+// inglés, alemán y francés. Es la forma de registrar textos desde otros
+// paquetes.
+func Tr(es, en, de, fr string) Text { return Text{ES: es, EN: en, DE: de, FR: fr} }
+
+func (t Text) in(l Lang) string {
+	switch l {
+	case ES:
+		return t.ES
+	case DE:
+		return t.DE
+	case FR:
+		return t.FR
+	default:
+		return t.EN
+	}
+}
+
+var (
+	mu      sync.RWMutex
+	catalog = map[string]Text{}
+)
+
+// Register añade textos. Se llama desde init(); una clave repetida o una
+// traducción vacía son errores de programación y provocan un pánico.
+func Register(texts map[string]Text) {
+	mu.Lock()
+	defer mu.Unlock()
+	for k, t := range texts {
+		if _, dup := catalog[k]; dup {
+			panic("msg: duplicate text key: " + k)
+		}
+		if t.ES == "" || t.EN == "" || t.DE == "" || t.FR == "" {
+			panic("msg: missing translation for key: " + k)
+		}
+		catalog[k] = t
+	}
+}
+
+// T devuelve el texto de key en el idioma l. Si la clave no existe, devuelve
+// la propia clave para que la ausencia sea visible sin romper la página.
+func T(l Lang, key string) string {
+	mu.RLock()
+	t, ok := catalog[key]
+	mu.RUnlock()
+	if !ok {
+		return key
+	}
+	return t.in(l)
+}
+
+// F formatea el texto de key en el idioma l con fmt.Sprintf.
+func F(l Lang, key string, args ...any) string {
+	return fmt.Sprintf(T(l, key), args...)
 }
 
 // Has indica si existe un texto para key.
 func Has(key string) bool {
 	mu.RLock()
 	defer mu.RUnlock()
-	_, ok := es[key]
+	_, ok := catalog[key]
 	return ok
 }
 
-// Register añade textos propios de un módulo. Se llama desde init(); una clave
-// repetida es un error de programación y provoca un pánico.
-func Register(texts map[string]string) {
-	mu.Lock()
-	defer mu.Unlock()
-	for k, v := range texts {
-		if _, dup := es[k]; dup {
-			panic("msg: clave de texto duplicada: " + k)
-		}
-		es[k] = v
+// Keys devuelve todas las claves registradas, ordenadas.
+func Keys() []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	out := make([]string, 0, len(catalog))
+	for k := range catalog {
+		out = append(out, k)
 	}
+	sort.Strings(out)
+	return out
+}
+
+// ---------------------------------------------------------------- mensajes
+
+// Msg es un mensaje traducible: una clave y sus argumentos. Se usa para los
+// errores de validación y para los mensajes de resultado de los checks, que
+// se guardan codificados y se traducen al mostrarlos. Los textos que se usan
+// con Msg deben formatear sus argumentos con %v.
+type Msg struct {
+	Key  string
+	Args []any
+}
+
+// New crea un mensaje.
+func New(key string, args ...any) Msg { return Msg{Key: key, Args: args} }
+
+// IsZero indica si el mensaje está vacío.
+func (m Msg) IsZero() bool { return m.Key == "" }
+
+// In devuelve el mensaje en el idioma l.
+func (m Msg) In(l Lang) string {
+	if m.Key == "" {
+		return ""
+	}
+	if !Has(m.Key) {
+		// Texto sin clave (p. ej. mensajes guardados por versiones antiguas).
+		return m.Key
+	}
+	return F(l, m.Key, m.Args...)
+}
+
+// String devuelve el mensaje en inglés (logs, errores técnicos).
+func (m Msg) String() string { return m.In(EN) }
+
+// Encode codifica el mensaje para guardarlo: un array JSON con la clave y los
+// argumentos convertidos a texto, p. ej. ["check.http.msg.status","200"].
+func (m Msg) Encode() string {
+	if m.Key == "" {
+		return ""
+	}
+	parts := make([]string, 0, len(m.Args)+1)
+	parts = append(parts, m.Key)
+	for _, a := range m.Args {
+		parts = append(parts, fmt.Sprint(a))
+	}
+	b, _ := json.Marshal(parts)
+	return string(b)
+}
+
+// Decode interpreta un mensaje guardado. Un texto que no es un mensaje
+// codificado (datos de versiones anteriores) se devuelve tal cual como clave,
+// y In lo mostrará sin traducir.
+func Decode(s string) Msg {
+	if !strings.HasPrefix(s, "[") {
+		return Msg{Key: s}
+	}
+	var parts []string
+	if err := json.Unmarshal([]byte(s), &parts); err != nil || len(parts) == 0 {
+		return Msg{Key: s}
+	}
+	args := make([]any, 0, len(parts)-1)
+	for _, p := range parts[1:] {
+		args = append(args, p)
+	}
+	return Msg{Key: parts[0], Args: args}
+}
+
+// ---------------------------------------------------------------- negociación
+
+// Negotiate elige el idioma a partir de la cabecera Accept-Language del
+// navegador. Si ninguno de los pedidos está admitido, devuelve Default.
+func Negotiate(acceptLanguage string) Lang {
+	type cand struct {
+		lang Lang
+		q    float64
+		pos  int
+	}
+	var cands []cand
+	for i, part := range strings.Split(acceptLanguage, ",") {
+		tag, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		primary, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(tag)), "-")
+		l, ok := Parse(primary)
+		if !ok {
+			continue
+		}
+		q := 1.0
+		if v, found := strings.CutPrefix(strings.TrimSpace(params), "q="); found {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				q = f
+			}
+		}
+		if q > 0 {
+			cands = append(cands, cand{l, q, i})
+		}
+	}
+	if len(cands) == 0 {
+		return Default
+	}
+	sort.SliceStable(cands, func(a, b int) bool { return cands[a].q > cands[b].q })
+	return cands[0].lang
 }

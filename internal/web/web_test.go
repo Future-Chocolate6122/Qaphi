@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
@@ -19,6 +21,9 @@ import (
 	"github.com/future-chocolate6122/qaphi/internal/auth"
 	_ "github.com/future-chocolate6122/qaphi/internal/checks" // registra los tipos de check
 	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/netcfg"
+	"github.com/future-chocolate6122/qaphi/internal/settings"
 	"github.com/future-chocolate6122/qaphi/internal/state"
 	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
 )
@@ -40,6 +45,9 @@ func (f *fakeScheduler) Remove(id int64) {
 
 type env struct {
 	t       *testing.T
+	set     *settings.Service
+	net     *fakeNetwork
+	lang    string // Accept-Language de las peticiones
 	srv     *httptest.Server
 	client  *http.Client
 	store   *sqlite.Store
@@ -61,10 +69,16 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	e := &env{t: t, store: st, token: auth.NewSetupToken(), sched: &fakeScheduler{}, tracker: state.New(st, log)}
+	set, err := settings.Load(ctx, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &env{t: t, store: st, token: auth.NewSetupToken(), sched: &fakeScheduler{}, tracker: state.New(st, log),
+		set: set, net: &fakeNetwork{cur: netcfg.Config{Port: 9077}}, lang: "es"}
 	s, err := New(Deps{
-		Log: log, Store: st, Admin: admin, Sessions: auth.NewSessions(st, nil),
+		Log: log, Store: st, Settings: set, Admin: admin, Sessions: auth.NewSessions(st, nil),
 		SetupToken: e.token, Limiter: auth.DefaultLimiter(), Tracker: e.tracker, Scheduler: e.sched,
+		Network: e.net, Certs: e.net,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +106,9 @@ func (e *env) do(method, path string, form url.Values, hdr map[string]string) re
 	req, _ := http.NewRequest(method, e.srv.URL+path, body)
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	if e.lang != "" {
+		req.Header.Set("Accept-Language", e.lang)
 	}
 	for k, v := range hdr {
 		req.Header.Set(k, v)
@@ -424,9 +441,9 @@ func TestSafeNext(t *testing.T) {
 
 func TestFormato(t *testing.T) {
 	for d, want := range map[time.Duration]string{
-		0: "—", 400 * time.Microsecond: "0.4 ms", 12 * time.Millisecond: "12 ms", 12 * time.Second: "12.0 s",
+		0: "—", 400 * time.Microsecond: "0,4 ms", 12 * time.Millisecond: "12 ms", 12 * time.Second: "12,0 s",
 	} {
-		if got := formatLatency(d); got != want {
+		if got := formatLatency(msg.ES, d); got != want {
 			t.Errorf("formatLatency(%v) = %q, se esperaba %q", d, got, want)
 		}
 	}
@@ -434,7 +451,7 @@ func TestFormato(t *testing.T) {
 	for d, want := range map[time.Duration]string{
 		0: "ahora", 5 * time.Second: "hace 5 s", 3 * time.Minute: "hace 3 min", 5 * time.Hour: "hace 5 h", 72 * time.Hour: "hace 3 d",
 	} {
-		if got := ago(now, now.Add(-d)); got != want {
+		if got := ago(msg.ES, now, now.Add(-d)); got != want {
 			t.Errorf("ago(%v) = %q, se esperaba %q", d, got, want)
 		}
 	}
@@ -446,3 +463,277 @@ func TestFormato(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestFormatoPorIdioma(t *testing.T) {
+	if got := formatLatency(msg.EN, 400*time.Microsecond); got != "0.4 ms" {
+		t.Errorf("en: %q", got)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	for l, want := range map[msg.Lang]string{msg.EN: "3 min ago", msg.DE: "vor 3 min", msg.FR: "il y a 3 min"} {
+		if got := ago(l, now, now.Add(-3*time.Minute)); got != want {
+			t.Errorf("%s: %q", l, got)
+		}
+	}
+	loc, _ := time.LoadLocation("Europe/Madrid")
+	ts := time.Date(2026, 11, 21, 9, 5, 7, 0, time.UTC)
+	for l, want := range map[msg.Lang]string{msg.ES: "21/11/2026 10:05:07 CET", msg.EN: "2026-11-21 10:05:07 CET", msg.DE: "21.11.2026 10:05:07 CET"} {
+		if got := formatDateTime(l, loc, ts); got != want {
+			t.Errorf("%s: %q", l, got)
+		}
+	}
+}
+
+// fakeNetwork simula el gestor de red y el certificado.
+type fakeNetwork struct {
+	cur       netcfg.Config
+	pending   *netcfg.Config
+	inPlace   bool
+	locked    bool
+	applyErr  error
+	confirmOK bool
+	reverted  bool
+	regens    int
+}
+
+func (f *fakeNetwork) Current() netcfg.Config { return f.cur }
+func (f *fakeNetwork) Locked() bool           { return f.locked }
+func (f *fakeNetwork) Pending() (netcfg.Config, time.Time, bool, bool) {
+	if f.pending == nil {
+		return netcfg.Config{}, time.Time{}, false, false
+	}
+	return *f.pending, time.Now().Add(2 * time.Minute), f.inPlace, true
+}
+func (f *fakeNetwork) Apply(_ context.Context, c netcfg.Config) (bool, error) {
+	if f.applyErr != nil {
+		return false, f.applyErr
+	}
+	if c == f.cur {
+		return false, netcfg.ErrUnchanged
+	}
+	f.pending = &c
+	f.inPlace = c.Port == f.cur.Port
+	return f.inPlace, nil
+}
+func (f *fakeNetwork) Confirm(*http.Request) error {
+	if f.pending == nil {
+		return netcfg.ErrNoPending
+	}
+	if !f.confirmOK {
+		return netcfg.ErrWrongEndpoint
+	}
+	f.cur, f.pending = *f.pending, nil
+	return nil
+}
+func (f *fakeNetwork) Cancel() error {
+	if f.pending == nil {
+		return netcfg.ErrNoPending
+	}
+	f.pending = nil
+	return nil
+}
+func (f *fakeNetwork) TakeReverted() bool { r := f.reverted; f.reverted = false; return r }
+func (f *fakeNetwork) Info() (netcfg.CertInfo, bool) {
+	if f.regens == 0 {
+		return netcfg.CertInfo{}, false
+	}
+	return netcfg.CertInfo{NotAfter: time.Date(2031, 1, 2, 0, 0, 0, 0, time.UTC), Fingerprint: "AB:CD"}, true
+}
+func (f *fakeNetwork) Regenerate(context.Context) error { f.regens++; return nil }
+
+func TestIdiomas(t *testing.T) {
+	e := newEnv(t)
+	// Antes del setup: el idioma del navegador.
+	e.lang = "de-DE,de;q=0.9"
+	if r := e.get("/setup"); !strings.Contains(r.body, "Ersteinrichtung") || !strings.Contains(r.body, `lang="de"`) {
+		t.Fatalf("/setup en alemán: %.300s", r.body)
+	}
+	// Selector de idioma de /setup: ?lang=fr se recuerda en una cookie.
+	expect(t, e.get("/setup?lang=fr"), http.StatusSeeOther, "/setup")
+	if r := e.get("/setup"); !strings.Contains(r.body, "Configuration initiale") {
+		t.Fatalf("/setup en francés: %.300s", r.body)
+	}
+	// El setup fija el idioma como ajuste global.
+	csrf := e.csrfFrom("/setup")
+	expect(t, e.post("/setup", url.Values{"csrf": {csrf}, "token": {e.token.String()}, "password": {testPassword}, "confirm": {testPassword}}),
+		http.StatusSeeOther, "/admin?m=welcome")
+	if ui := e.set.UI(); !ui.LangSet || ui.Lang != msg.FR {
+		t.Fatalf("idioma guardado = %+v", ui)
+	}
+	e.lang = "es" // ya no importa el navegador
+	if r := e.get("/admin?m=welcome"); !strings.Contains(r.body, "Mot de passe enregistré") || !strings.Contains(r.body, "Paramètres") {
+		t.Fatalf("/admin en francés: %.500s", r.body)
+	}
+	// Cambiarlo en Ajustes.
+	csrf = e.csrfFrom("/admin/settings")
+	expect(t, e.post("/admin/settings", url.Values{"csrf": {csrf}, "language": {"en"}, "theme": {"auto"}, "timezone": {""}}),
+		http.StatusSeeOther, "/admin/settings?m=settings")
+	if r := e.get("/admin/settings?m=settings"); !strings.Contains(r.body, "Settings saved.") || !strings.Contains(r.body, `lang="en"`) {
+		t.Fatalf("ajustes en inglés: %.500s", r.body)
+	}
+}
+
+func TestTemaYZonaHoraria(t *testing.T) {
+	e := newEnv(t)
+	if r := e.get("/setup"); !strings.Contains(r.body, `href="/theme/auto.css?v=`) {
+		t.Fatal("el tema por defecto debe ser el automático")
+	}
+	e.setup()
+	csrf := e.csrfFrom("/admin/settings")
+	r := e.get("/admin/settings")
+	for _, s := range []string{`value="dark"`, `value="Europe/Madrid"`, "Oscuro"} {
+		if !strings.Contains(r.body, s) {
+			t.Errorf("la página de ajustes no contiene %s", s)
+		}
+	}
+	expect(t, e.post("/admin/settings", url.Values{"csrf": {csrf}, "language": {"es"}, "theme": {"dark"}, "timezone": {"Europe/Madrid"}}),
+		http.StatusSeeOther, "/admin/settings?m=settings")
+	r = e.get("/home")
+	if !strings.Contains(r.body, `href="/theme/dark.css?v=`) {
+		t.Fatal("no se aplica el tema oscuro")
+	}
+	if e.set.Location().String() != "Europe/Madrid" {
+		t.Error("no se guardó la zona horaria")
+	}
+	// La hoja del tema.
+	css := e.get("/theme/dark.css")
+	if css.status != 200 || !strings.Contains(css.body, "color-scheme: dark") || !strings.HasPrefix(css.header.Get("Content-Type"), "text/css") {
+		t.Fatalf("hoja del tema: %d %s", css.status, css.body)
+	}
+	expect(t, e.get("/theme/rosa.css"), http.StatusNotFound, "")
+	// Valores no válidos.
+	expect(t, e.post("/admin/settings", url.Values{"csrf": {csrf}, "language": {"es"}, "theme": {"rosa"}, "timezone": {""}}), http.StatusBadRequest, "")
+	expect(t, e.post("/admin/settings", url.Values{"csrf": {csrf}, "language": {"it"}, "theme": {"dark"}, "timezone": {""}}), http.StatusBadRequest, "")
+}
+
+func TestEstadoEnVivo(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	c := model.Check{Name: "Web", Type: "tcp", Interval: time.Minute, Params: map[string]string{"host": "127.0.0.1", "port": "1", "timeout": "1s"}}
+	if err := e.store.CreateCheck(context.Background(), &c); err != nil {
+		t.Fatal(err)
+	}
+	e.tracker.Record(model.Result{CheckID: c.ID, At: time.Now().Add(-5 * time.Second), OK: false,
+		Message: msg.New("check.msg.refused").Encode()})
+	r := e.get("/home")
+	if !strings.Contains(r.body, `data-live="/home/state.json"`) || !strings.Contains(r.body, "js/live.js") || !strings.Contains(r.body, "<noscript>") {
+		t.Fatal("/home debe cargar la actualización en vivo con alternativa sin JavaScript")
+	}
+	if !strings.Contains(r.body, "conexión rechazada") {
+		t.Error("el mensaje del resultado debe mostrarse traducido")
+	}
+	r = e.get("/home/state.json")
+	if r.status != 200 || !strings.HasPrefix(r.header.Get("Content-Type"), "application/json") {
+		t.Fatalf("state.json: %d %s", r.status, r.header.Get("Content-Type"))
+	}
+	var data struct {
+		Summary string `json:"summary"`
+		Level   string `json:"level"`
+		Checks  []struct {
+			ID          int64  `json:"id"`
+			Status      string `json:"status"`
+			StatusLabel string `json:"status_label"`
+			Message     string `json:"message"`
+			Last        string `json:"last"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(r.body), &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Summary != "0/1 (1 caído)" || data.Level != "down" || len(data.Checks) != 1 ||
+		data.Checks[0].StatusLabel != "Caído" || data.Checks[0].Message != "conexión rechazada" || !strings.HasPrefix(data.Checks[0].Last, "hace") {
+		t.Fatalf("datos en vivo = %+v", data)
+	}
+	// Sin sesión no hay datos.
+	e.client.Jar, _ = cookiejar.New(nil)
+	if r := e.get("/home/state.json"); r.status != http.StatusSeeOther {
+		t.Errorf("sin sesión: %d", r.status)
+	}
+}
+
+func TestRed(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	csrf := e.csrfFrom("/admin/settings")
+	form := func(bind, port, proto string) url.Values {
+		return url.Values{"csrf": {csrf}, "bind": {bind}, "port": {port}, "protocol": {proto}}
+	}
+	r := e.get("/admin/settings")
+	if !strings.Contains(r.body, "http://0.0.0.0:9077") || !strings.Contains(r.body, `name="port"`) {
+		t.Fatalf("sección de red: %.500s", r.body)
+	}
+	// Validación.
+	r = e.post("/admin/settings/network", form("", "80", "http"))
+	if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "entre 1024 y 65535") || !strings.Contains(r.body, `value="80"`) {
+		t.Fatalf("puerto 80: %d %.300s", r.status, r.body)
+	}
+	r = e.post("/admin/settings/network", form("10.99.99.99", "9077", "http"))
+	if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "no pertenece a este equipo") {
+		t.Fatalf("IP ajena: %d", r.status)
+	}
+	expect(t, e.post("/admin/settings/network", form("", "9077", "http")), http.StatusUnprocessableEntity, "")
+	// Aplicar un cambio de puerto: página de confirmación pendiente.
+	r = e.post("/admin/settings/network", form("127.0.0.1", "9100", "https"))
+	if r.status != 200 || !strings.Contains(r.body, "https://127.0.0.1:9100/admin/settings/network/confirm") {
+		t.Fatalf("cambio pendiente: %d %.500s", r.status, r.body)
+	}
+	if r := e.get("/admin/settings"); !strings.Contains(r.body, "Cambio pendiente de confirmar") {
+		t.Error("los ajustes deben mostrar el cambio pendiente")
+	}
+	// Un segundo cambio mientras hay uno pendiente.
+	e.net.applyErr = netcfg.ErrPending
+	if r := e.post("/admin/settings/network", form("", "9200", "http")); r.status != http.StatusConflict {
+		t.Errorf("segundo cambio: %d", r.status)
+	}
+	e.net.applyErr = nil
+	// Confirmar desde la dirección equivocada.
+	if r := e.post("/admin/settings/network/confirm", url.Values{"csrf": {csrf}}); r.status != http.StatusConflict || !strings.Contains(r.body, "nueva dirección") {
+		t.Fatalf("confirmar desde la anterior: %d %.300s", r.status, r.body)
+	}
+	e.net.confirmOK = true
+	expect(t, e.post("/admin/settings/network/confirm", url.Values{"csrf": {csrf}}), http.StatusSeeOther, "/admin/settings?m=network")
+	if e.net.cur.Port != 9100 || !e.net.cur.TLS {
+		t.Fatalf("configuración tras confirmar = %+v", e.net.cur)
+	}
+	// Cancelar.
+	e.post("/admin/settings/network", form("", "9300", "http"))
+	expect(t, e.post("/admin/settings/network/cancel", url.Values{"csrf": {csrf}}), http.StatusSeeOther, "/admin/settings?m=cancelled")
+	if e.net.pending != nil {
+		t.Error("el cambio no se canceló")
+	}
+	// Aviso de vuelta atrás por no confirmar.
+	e.net.reverted = true
+	if r := e.get("/admin/settings"); !strings.Contains(r.body, "no se confirmó a tiempo") {
+		t.Error("falta el aviso de vuelta atrás")
+	}
+	// Certificado.
+	expect(t, e.post("/admin/settings/cert", url.Values{"csrf": {csrf}}), http.StatusSeeOther, "/admin/settings?m=cert")
+	if r := e.get("/admin/settings"); !strings.Contains(r.body, "AB:CD") || !strings.Contains(r.body, "02/01/2031") {
+		t.Errorf("datos del certificado: %.300s", r.body)
+	}
+	// Dirección fijada al arrancar.
+	e.net.locked = true
+	if r := e.get("/admin/settings"); !strings.Contains(r.body, "fijada al arrancar") || strings.Contains(r.body, `name="port"`) {
+		t.Error("con --listen la red no debe poder cambiarse")
+	}
+}
+
+// TestClavesDeLasPlantillas comprueba que todas las claves de texto usadas en
+// las plantillas existen.
+func TestClavesDeLasPlantillas(t *testing.T) {
+	re := regexp.MustCompile(`\{\{-?\s*tf?\s+"([^"]+)"`)
+	err := fs.WalkDir(templateFS, "templates", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, _ := fs.ReadFile(templateFS, p)
+		for _, m := range re.FindAllStringSubmatch(string(b), -1) {
+			if !msg.Has(m[1]) {
+				t.Errorf("%s: clave de texto inexistente %q", p, m[1])
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

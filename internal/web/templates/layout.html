@@ -1,15 +1,16 @@
 {{define "layout" -}}
 <!DOCTYPE html>
-<html lang="es">
+<html lang="{{.Lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
 <meta name="referrer" content="same-origin">
-{{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
+{{if .Live}}<noscript><meta http-equiv="refresh" content="30"></noscript>{{end}}
 <title>{{.Title}} · {{t "app.name"}}</title>
 <link rel="icon" href="{{asset "favicon.svg"}}" type="image/svg+xml">
+<link rel="stylesheet" href="{{.ThemeCSS}}">
 <link rel="stylesheet" href="{{asset "style.css"}}">
+{{if .Live}}<script src="{{asset "js/live.js"}}" defer></script>{{end}}
 </head>
 <body>
 <header class="topbar">
@@ -18,6 +19,7 @@
   <nav class="nav">
     <a href="/home"{{if eq .Active "home"}} aria-current="page"{{end}}>{{t "nav.home"}}</a>
     <a href="/admin"{{if eq .Active "admin"}} aria-current="page"{{end}}>{{t "nav.admin"}}</a>
+    <a href="/admin/settings"{{if eq .Active "settings"}} aria-current="page"{{end}}>{{t "nav.settings"}}</a>
     <form method="post" action="/logout" class="inline">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <button type="submit" class="link">{{t "nav.logout"}}</button>
@@ -27,7 +29,8 @@
   <span class="tagline">{{t "app.tagline"}}</span>
   {{end}}
 </header>
-<main class="container">
+<main class="container"{{if .Live}} data-live="{{.Live}}"{{end}}>
+{{if .Alert}}<p class="alert" role="alert">{{.Alert}}</p>{{end}}
 {{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}
 {{template "content" .}}
 </main>
@@ -62,4 +65,6 @@
 </div>
 {{- end}}
 
-{{define "badge"}}<span class="badge badge-{{.Status}}">{{t .StatusLabel}}</span>{{end}}
+{{define "badge"}}<span class="badge badge-{{.Status}}" data-field="status">{{.StatusLabel}}</span>{{end}}
+
+{{define "options"}}{{range .}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Text}}</option>{{end}}{{end}}

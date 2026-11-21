@@ -32,12 +32,12 @@ func NewRegistry[T any](kind string) *Registry[T] {
 // errores de programación y provocan un pánico al arrancar.
 func (r *Registry[T]) Register(info Info, impl T) {
 	if err := info.Validate(); err != nil {
-		panic(fmt.Sprintf("registro de %s: %v", r.kind, err))
+		panic(fmt.Sprintf("%s registry: %v", r.kind, err))
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, dup := r.entries[info.ID]; dup {
-		panic(fmt.Sprintf("registro de %s: id duplicado %q", r.kind, info.ID))
+		panic(fmt.Sprintf("%s registry: duplicate id %q", r.kind, info.ID))
 	}
 	r.entries[info.ID] = Entry[T]{Info: info, Impl: impl}
 }

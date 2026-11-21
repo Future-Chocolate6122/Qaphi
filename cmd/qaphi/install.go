@@ -11,26 +11,28 @@ import (
 func installCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	force := fs.Bool("force", false, "permite instalar una versión anterior a la instalada")
+	force := fs.Bool("force", false, "allow installing a version older than the installed one")
 	values := map[string]*string{}
 	for _, name := range install.InstallFlags() {
 		values[name] = fs.String(name, "", "")
 	}
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `Uso: sudo qaphi install [opciones]
+		fmt.Fprint(stderr, `Usage: sudo qaphi install [options]
 
-Instala Qaphi como servicio de systemd o, si ya está instalado, lo actualiza
-con este binario conservando los datos y las opciones. Si el servicio estaba en
-marcha, vuelve a arrancarlo; si la versión nueva no arranca, vuelve atrás.
+Installs Qaphi as a systemd service or, if it is already installed, updates it
+with this binary, keeping the data and the options. If the service was running,
+it is started again; if the new version does not start, it is rolled back.
 
-Opciones de arranque (se guardan y se conservan en las actualizaciones):
-  --listen=host:puerto        dirección de escucha (por defecto :8091)
-  --log-level=nivel           debug, info, warn o error
-  --log-format=formato        text o json
-  --flush-interval=duración   volcado de resultados a disco (10s–1h)
+The listen address, port and protocol are configured in the web UI
+(Settings > Network). Startup options (kept across updates):
+  --listen=host:port          emergency override of the web network settings
+                              (plain HTTP); --listen= removes the override
+  --log-level=level           debug, info, warn or error
+  --log-format=format         text or json
+  --flush-interval=duration   how often results are flushed to disk (10s-1h)
 
-Otras:
-  --force                     permite instalar una versión anterior
+Other:
+  --force                     allow installing an older version
 `)
 	}
 	if err := fs.Parse(args); err != nil {
@@ -40,7 +42,7 @@ Otras:
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "qaphi install: argumento inesperado %q\n", fs.Arg(0))
+		fmt.Fprintf(stderr, "qaphi install: unexpected argument %q\n", fs.Arg(0))
 		return exitUsage
 	}
 	given := map[string]string{}
@@ -60,7 +62,7 @@ Otras:
 func uninstallCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	purge := fs.Bool("purge", false, "borra también los datos ("+install.DataDir+")")
+	purge := fs.Bool("purge", false, "also delete the data ("+install.DataDir+")")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return exitOK

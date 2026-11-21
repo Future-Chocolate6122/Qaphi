@@ -29,12 +29,12 @@ func TestRun(t *testing.T) {
 		{name: "version", args: []string{"version"}, code: exitOK, stdout: "qaphi "},
 		{name: "version corta", args: []string{"version", "--short"}, code: exitOK, stdout: version.Version + "\n"},
 		{name: "help", args: []string{"help"}, code: exitOK, stdout: "reset-password"},
-		{name: "subcomando desconocido", args: []string{"bailar"}, code: exitUsage, stderr: "subcomando desconocido"},
+		{name: "subcomando desconocido", args: []string{"bailar"}, code: exitUsage, stderr: "unknown subcommand"},
 		{name: "serve -h", args: []string{"serve", "-h"}, code: exitOK, stderr: "QAPHI_LISTEN"},
 		{name: "flags sin subcomando = serve", args: []string{"-h"}, code: exitOK, stderr: "--data-dir"},
-		{name: "configuración no válida", args: []string{"serve", "--listen", "nada"}, code: exitUsage, stderr: "configuración no válida"},
+		{name: "configuración no válida", args: []string{"serve", "--listen", "nada"}, code: exitUsage, stderr: "invalid configuration"},
 		{name: "install -h", args: []string{"install", "-h"}, code: exitOK, stderr: "--listen"},
-		{name: "install argumento sobrante", args: []string{"install", "extra"}, code: exitUsage, stderr: "argumento inesperado"},
+		{name: "install argumento sobrante", args: []string{"install", "extra"}, code: exitUsage, stderr: "unexpected argument"},
 		{name: "uninstall -h", args: []string{"uninstall", "-h"}, code: exitOK, stderr: "purge"},
 	}
 	for _, tt := range tests {
@@ -68,18 +68,18 @@ func TestResetPassword(t *testing.T) {
 
 	// Mientras la base de datos está abierta por otro proceso, no se puede.
 	code, _, errOut := runCmd([]string{"reset-password", "--data-dir", dir, "--password-stdin"}, "contraseña nueva segura\n")
-	if code != exitError || !strings.Contains(errOut, "en uso") {
+	if code != exitError || !strings.Contains(errOut, "in use") {
 		t.Fatalf("con la base de datos en uso: código %d, %s", code, errOut)
 	}
 	st.Close()
 
 	code, out, errOut := runCmd([]string{"reset-password", "--data-dir", dir, "--password-stdin"}, "corta\n")
-	if code != exitError || !strings.Contains(errOut, "10 caracteres") {
+	if code != exitError || !strings.Contains(errOut, "10 characters") {
 		t.Fatalf("contraseña corta: código %d, %s %s", code, out, errOut)
 	}
 
 	code, out, errOut = runCmd([]string{"reset-password", "--data-dir", dir, "--password-stdin"}, "contraseña nueva segura\n")
-	if code != exitOK || !strings.Contains(out, "restablecida") {
+	if code != exitOK || !strings.Contains(out, "password reset") {
 		t.Fatalf("código %d: %s %s", code, out, errOut)
 	}
 	st, err = sqlite.Open(ctx, dbPath)
@@ -101,7 +101,7 @@ func TestResetPassword(t *testing.T) {
 
 func TestResetPasswordSinDatos(t *testing.T) {
 	code, _, errOut := runCmd([]string{"reset-password", "--data-dir", t.TempDir(), "--password-stdin"}, "contraseña nueva segura\n")
-	if code != exitError || !strings.Contains(errOut, "no hay base de datos") {
+	if code != exitError || !strings.Contains(errOut, "no database") {
 		t.Fatalf("código %d: %s", code, errOut)
 	}
 }

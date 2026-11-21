@@ -30,8 +30,8 @@ import (
 func resetPasswordCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("reset-password", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	dataDir := fs.String("data-dir", "", "directorio de datos (por defecto, el de la instalación o ./data)")
-	fromStdin := fs.Bool("password-stdin", false, "lee la contraseña de la entrada estándar (una línea), sin preguntar")
+	dataDir := fs.String("data-dir", "", "data directory (default: the installation's, or ./data)")
+	fromStdin := fs.Bool("password-stdin", false, "read the password from standard input (one line) instead of prompting")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return exitOK
@@ -46,7 +46,7 @@ func resetPasswordCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	dir := resolveDataDir(*dataDir)
 	dbPath := filepath.Join(dir, app.DBFileName)
 	if _, err := os.Stat(dbPath); err != nil {
-		return fail("no hay base de datos en %s (usa --data-dir)", dir)
+		return fail("no database in %s (use --data-dir)", dir)
 	}
 
 	pw, err := readNewPassword(stdin, stdout, *fromStdin)
@@ -54,7 +54,7 @@ func resetPasswordCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		return fail("%v", err)
 	}
 	if e := auth.ValidatePassword(pw, pw); e != "" {
-		return fail("%s", msg.T(e))
+		return fail("%s", msg.T(msg.EN, e))
 	}
 
 	// Servicio instalado y en marcha: se detiene y se vuelve a arrancar.
@@ -63,11 +63,11 @@ func resetPasswordCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	if _, err := os.Stat(install.UnitPath); err == nil {
 		if _, err := sys.Run("systemctl", "is-active", "--quiet", install.ServiceName); err == nil {
 			if os.Geteuid() != 0 {
-				return fail("el servicio %s está en marcha; ejecuta este comando con sudo para que pueda detenerlo y volver a arrancarlo", install.ServiceName)
+				return fail("the %s service is running; run this command with sudo so it can stop and restart it", install.ServiceName)
 			}
-			fmt.Fprintln(stdout, "Deteniendo el servicio…")
+			fmt.Fprintln(stdout, "Stopping the service...")
 			if _, err := sys.Run("systemctl", "stop", install.ServiceName); err != nil {
-				return fail("detener el servicio: %v", err)
+				return fail("stop the service: %v", err)
 			}
 			restart = true
 		}
@@ -78,7 +78,7 @@ func resetPasswordCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		defer cancel()
 		st, err := sqlite.Open(ctx, dbPath)
 		if errors.Is(err, store.ErrLocked) {
-			return fail("la base de datos está en uso: detén qaphi antes (p. ej. «sudo systemctl stop %s»)", install.ServiceName)
+			return fail("the database is in use: stop qaphi first (e.g. 'sudo systemctl stop %s')", install.ServiceName)
 		}
 		if err != nil {
 			return fail("%v", err)
@@ -94,13 +94,13 @@ func resetPasswordCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		if closeErr != nil {
 			return fail("%v", closeErr)
 		}
-		fmt.Fprintln(stdout, "✓ Contraseña de admin restablecida. Se han cerrado todas las sesiones.")
+		fmt.Fprintln(stdout, "OK: admin password reset. All sessions have been closed.")
 		return exitOK
 	}()
 	if restart {
-		fmt.Fprintln(stdout, "Arrancando el servicio…")
+		fmt.Fprintln(stdout, "Starting the service...")
 		if _, err := sys.Run("systemctl", "start", install.ServiceName); err != nil {
-			return fail("arrancar el servicio: %v", err)
+			return fail("start the service: %v", err)
 		}
 	}
 	return code
@@ -149,22 +149,22 @@ func readNewPassword(stdin io.Reader, stdout io.Writer, fromStdin bool) (string,
 	}
 	f, ok := stdin.(*os.File)
 	if !ok || !isTerminal(f.Fd()) {
-		return "", errors.New("no hay terminal: usa --password-stdin para pasar la contraseña por la entrada estándar")
+		return "", errors.New("no terminal: use --password-stdin to pass the password on standard input")
 	}
-	fmt.Fprint(stdout, "Contraseña nueva: ")
+	fmt.Fprint(stdout, "New password: ")
 	a, err := readNoEcho(f)
 	fmt.Fprintln(stdout)
 	if err != nil {
 		return "", err
 	}
-	fmt.Fprint(stdout, "Repítela: ")
+	fmt.Fprint(stdout, "Repeat it: ")
 	b, err := readNoEcho(f)
 	fmt.Fprintln(stdout)
 	if err != nil {
 		return "", err
 	}
 	if a != b {
-		return "", errors.New(msg.T(auth.ErrPasswordMismatch))
+		return "", errors.New(msg.T(msg.EN, auth.ErrPasswordMismatch))
 	}
 	return a, nil
 }

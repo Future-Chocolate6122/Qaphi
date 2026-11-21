@@ -199,13 +199,13 @@ func (t *Tracker) Flush(ctx context.Context) error {
 		if over := len(t.pending) - hardLimit; over > 0 {
 			t.pending = append([]model.Result(nil), t.pending[over:]...)
 			t.dropped.Add(int64(over))
-			t.log.Warn("buffer de resultados lleno: se descartan los más antiguos", "descartados", over)
+			t.log.Warn("result buffer full: dropping oldest results", "dropped", over)
 		}
 		t.mu.Unlock()
 		return err
 	}
 	t.flushed.Add(int64(len(batch)))
-	t.log.Debug("resultados volcados", "cantidad", len(batch), "duración", time.Since(start).Round(time.Millisecond))
+	t.log.Debug("results flushed", "count", len(batch), "duration", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
@@ -222,7 +222,7 @@ func (t *Tracker) RunFlusher(ctx context.Context, interval time.Duration) {
 		case <-t.flushNow:
 		}
 		if err := t.Flush(ctx); err != nil && ctx.Err() == nil {
-			t.log.Error("no se pudieron volcar los resultados; se reintentará", "error", err, "pendientes", t.Pending())
+			t.log.Error("could not flush results; will retry", "error", err, "pending", t.Pending())
 		}
 	}
 }

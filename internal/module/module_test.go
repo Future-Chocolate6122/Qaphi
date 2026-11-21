@@ -8,17 +8,17 @@ import (
 )
 
 func init() {
-	msg.Register(map[string]string{
-		"test.mod":      "Módulo de prueba",
-		"test.url":      "URL",
-		"test.timeout":  "Tiempo máximo",
-		"test.retries":  "Reintentos",
-		"test.insecure": "Ignorar TLS",
-		"test.method":   "Método",
-		"test.get":      "GET",
-		"test.head":     "HEAD",
-		"test.token":    "Token",
-		"test.body":     "Cuerpo",
+	msg.Register(map[string]msg.Text{
+		"test.mod":      msg.Tr("Módulo de prueba", "Módulo de prueba", "Módulo de prueba", "Módulo de prueba"),
+		"test.url":      msg.Tr("URL", "URL", "URL", "URL"),
+		"test.timeout":  msg.Tr("Tiempo máximo", "Tiempo máximo", "Tiempo máximo", "Tiempo máximo"),
+		"test.retries":  msg.Tr("Reintentos", "Reintentos", "Reintentos", "Reintentos"),
+		"test.insecure": msg.Tr("Ignorar TLS", "Ignorar TLS", "Ignorar TLS", "Ignorar TLS"),
+		"test.method":   msg.Tr("Método", "Método", "Método", "Método"),
+		"test.get":      msg.Tr("GET", "GET", "GET", "GET"),
+		"test.head":     msg.Tr("HEAD", "HEAD", "HEAD", "HEAD"),
+		"test.token":    msg.Tr("Token", "Token", "Token", "Token"),
+		"test.body":     msg.Tr("Cuerpo", "Cuerpo", "Cuerpo", "Cuerpo"),
 	})
 }
 
@@ -80,7 +80,7 @@ func TestNormalize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, errs := info.Normalize(tt.in)
 			if tt.errField != "" {
-				if errs[tt.errField] == "" {
+				if errs[tt.errField].IsZero() {
 					t.Fatalf("se esperaba error en %q, errores = %v", tt.errField, errs)
 				}
 				if got != nil {
@@ -106,7 +106,7 @@ func TestNormalize(t *testing.T) {
 func TestNormalizeTodosLosErrores(t *testing.T) {
 	_, errs := testInfo().Normalize(Values{"retries": "x", "method": "y"})
 	for _, k := range []string{"url", "retries", "method"} {
-		if errs[k] == "" {
+		if errs[k].IsZero() {
 			t.Errorf("falta el error de %q (errores = %v)", k, errs)
 		}
 	}
@@ -129,15 +129,15 @@ func TestValidate(t *testing.T) {
 		mutate func(*Info)
 		want   string
 	}{
-		{"id con mayúsculas", func(i *Info) { i.ID = "HTTP" }, "id de módulo"},
-		{"nombre sin registrar", func(i *Info) { i.Name = "no.existe" }, "sin registrar"},
-		{"campo duplicado", func(i *Info) { i.Fields = append(i.Fields, i.Fields[0]) }, "duplicado"},
-		{"clave de campo no válida", func(i *Info) { i.Fields[0].Key = "URL" }, "clave no válida"},
-		{"tipo desconocido", func(i *Info) { i.Fields[0].Type = "color" }, "tipo desconocido"},
-		{"select sin opciones", func(i *Info) { i.Fields[4].Options = nil }, "necesita opciones"},
-		{"límite ilegible", func(i *Info) { i.Fields[2].Max = "diez" }, "límite"},
-		{"min en texto", func(i *Info) { i.Fields[0].Min = "1" }, "Min/Max"},
-		{"default incoherente", func(i *Info) { i.Fields[2].Default = "99" }, "valor por defecto"},
+		{"id con mayúsculas", func(i *Info) { i.ID = "HTTP" }, "invalid module id"},
+		{"nombre sin registrar", func(i *Info) { i.Name = "no.existe" }, "unregistered text key"},
+		{"campo duplicado", func(i *Info) { i.Fields = append(i.Fields, i.Fields[0]) }, "duplicate field"},
+		{"clave de campo no válida", func(i *Info) { i.Fields[0].Key = "URL" }, "invalid key"},
+		{"tipo desconocido", func(i *Info) { i.Fields[0].Type = "color" }, "unknown type"},
+		{"select sin opciones", func(i *Info) { i.Fields[4].Options = nil }, "needs options"},
+		{"límite ilegible", func(i *Info) { i.Fields[2].Max = "diez" }, "invalid limit"},
+		{"min en texto", func(i *Info) { i.Fields[0].Min = "1" }, "min/max"},
+		{"default incoherente", func(i *Info) { i.Fields[2].Default = "99" }, "invalid default value"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -186,10 +186,10 @@ func TestRegistry(t *testing.T) {
 		t.Fatal("Lookup de un id inexistente debe fallar")
 	}
 
-	mustPanic(t, "id duplicado", func() { r.Register(a, impl("otra")) })
+	mustPanic(t, "duplicate id", func() { r.Register(a, impl("otra")) })
 	bad := testInfo()
 	bad.ID = "Mal"
-	mustPanic(t, "id de módulo", func() { r.Register(bad, impl("x")) })
+	mustPanic(t, "invalid module id", func() { r.Register(bad, impl("x")) })
 }
 
 func mustPanic(t *testing.T, want string, fn func()) {

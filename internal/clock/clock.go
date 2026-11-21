@@ -61,11 +61,11 @@ func (g *Guard) Valid() bool {
 	switch {
 	case !ok && !g.invalid:
 		g.invalid = true
-		g.log.Warn("la hora del sistema no es válida (¿NTP sin sincronizar?): no se registran resultados hasta que se corrija",
-			"hora", now.UTC().Format(time.RFC3339), "mínima", g.min.UTC().Format(time.RFC3339))
+		g.log.Warn("system clock is not valid (NTP not synchronized?): no results will be recorded until it is",
+			"time", now.UTC().Format(time.RFC3339), "min_valid", g.min.UTC().Format(time.RFC3339))
 	case ok && g.invalid:
 		g.invalid = false
-		g.log.Info("la hora del sistema ya es válida: se reanudan los checks", "hora", now.UTC().Format(time.RFC3339))
+		g.log.Info("system clock is valid again: resuming checks", "time", now.UTC().Format(time.RFC3339))
 	}
 	return ok
 }

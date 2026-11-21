@@ -1,9 +1,14 @@
-// Package web contiene el servidor HTTP: rutas, middleware, plantillas y
-// ficheros estáticos embebidos en el binario.
+// Package web contiene el servidor HTTP: rutas, middleware, plantillas, CSS
+// y JavaScript embebidos en el binario.
+//
+// Las páginas se generan en el idioma configurado (las plantillas se compilan
+// una vez por idioma al arrancar). Login, setup y formularios funcionan sin
+// JavaScript; las páginas de estado usan JavaScript para actualizarse en vivo.
 package web
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"fmt"
 	"html/template"
@@ -17,8 +22,11 @@ import (
 	"github.com/future-chocolate6122/qaphi/internal/auth"
 	"github.com/future-chocolate6122/qaphi/internal/model"
 	"github.com/future-chocolate6122/qaphi/internal/msg"
+	"github.com/future-chocolate6122/qaphi/internal/netcfg"
+	"github.com/future-chocolate6122/qaphi/internal/settings"
 	"github.com/future-chocolate6122/qaphi/internal/state"
 	"github.com/future-chocolate6122/qaphi/internal/store"
+	"github.com/future-chocolate6122/qaphi/internal/theme"
 )
 
 //go:embed templates
@@ -40,24 +48,45 @@ type CheckScheduler interface {
 	Remove(id int64)
 }
 
+// Network es lo que la web necesita del gestor de red.
+type Network interface {
+	Current() netcfg.Config
+	Locked() bool
+	Pending() (cfg netcfg.Config, deadline time.Time, inPlace, ok bool)
+	Apply(ctx context.Context, cfg netcfg.Config) (inPlace bool, err error)
+	Confirm(r *http.Request) error
+	Cancel() error
+	TakeReverted() bool
+}
+
+// Certs es lo que la web necesita del certificado HTTPS.
+type Certs interface {
+	Info() (netcfg.CertInfo, bool)
+	Regenerate(ctx context.Context) error
+}
+
 // Deps son las dependencias que el servidor web recibe de la aplicación.
 type Deps struct {
 	Log        *slog.Logger
 	Store      store.Store
+	Settings   *settings.Service
 	Admin      *auth.Admin
 	Sessions   *auth.Sessions
 	SetupToken *auth.SetupToken // nil si ya hay contraseña
 	Limiter    *auth.Limiter
 	Tracker    StateTracker
 	Scheduler  CheckScheduler
+	Network    Network // nil: sin ajustes de red (tests)
+	Certs      Certs
 	Now        func() time.Time // nil = time.Now
 }
 
 // Server es el manejador HTTP de Qaphi.
 type Server struct {
 	Deps
-	pages   map[string]*template.Template
+	pages   map[msg.Lang]map[string]*template.Template
 	static  *staticFiles
+	themes  map[string]theme.Compiled
 	handler http.Handler
 }
 
@@ -73,19 +102,25 @@ func New(deps Deps) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{Deps: deps, static: static}
+	s := &Server{Deps: deps, static: static, themes: theme.Compile()}
 
-	s.pages, err = loadPages(templateFS, template.FuncMap{
-		"t":     msg.T,
-		"tf":    msg.F,
-		"asset": static.url,
-	})
-	if err != nil {
-		return nil, err
+	s.pages = map[msg.Lang]map[string]*template.Template{}
+	for _, l := range msg.Languages() {
+		lang := l.Code
+		pages, err := loadPages(templateFS, template.FuncMap{
+			"t":     func(key string) string { return msg.T(lang, key) },
+			"tf":    func(key string, args ...any) string { return msg.F(lang, key, args...) },
+			"asset": static.url,
+		})
+		if err != nil {
+			return nil, err
+		}
+		s.pages[lang] = pages
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", static))
+	mux.HandleFunc("GET /theme/{file}", s.handleTheme)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/home", http.StatusSeeOther)
 	})
@@ -97,10 +132,11 @@ func New(deps Deps) (*Server, error) {
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.Handle("POST /logout", s.requireAuth(http.HandlerFunc(s.handleLogout)))
 
-	// Página de estado (en la fase 2 podrá ser pública).
+	// Página de estado (en la fase 3 podrá ser pública) y sus datos en vivo.
 	mux.Handle("GET /home", s.requireAuth(http.HandlerFunc(s.handleHome)))
+	mux.Handle("GET /home/state.json", s.requireAuth(http.HandlerFunc(s.handleHomeState)))
 
-	// Administración.
+	// Checks.
 	mux.Handle("GET /admin", s.requireAuth(http.HandlerFunc(s.handleAdmin)))
 	mux.Handle("GET /admin/checks/new", s.requireAuth(http.HandlerFunc(s.handleCheckNew)))
 	mux.Handle("POST /admin/checks", s.requireAuth(http.HandlerFunc(s.handleCheckCreate)))
@@ -108,6 +144,15 @@ func New(deps Deps) (*Server, error) {
 	mux.Handle("POST /admin/checks/{id}", s.requireAuth(http.HandlerFunc(s.handleCheckUpdate)))
 	mux.Handle("GET /admin/checks/{id}/delete", s.requireAuth(http.HandlerFunc(s.handleCheckDeleteForm)))
 	mux.Handle("POST /admin/checks/{id}/delete", s.requireAuth(http.HandlerFunc(s.handleCheckDelete)))
+
+	// Ajustes.
+	mux.Handle("GET /admin/settings", s.requireAuth(http.HandlerFunc(s.handleSettings)))
+	mux.Handle("POST /admin/settings", s.requireAuth(http.HandlerFunc(s.handleSettingsSave)))
+	mux.Handle("POST /admin/settings/network", s.requireAuth(http.HandlerFunc(s.handleNetworkApply)))
+	mux.Handle("GET /admin/settings/network/confirm", s.requireAuth(http.HandlerFunc(s.handleNetworkConfirmForm)))
+	mux.Handle("POST /admin/settings/network/confirm", s.requireAuth(http.HandlerFunc(s.handleNetworkConfirm)))
+	mux.Handle("POST /admin/settings/network/cancel", s.requireAuth(http.HandlerFunc(s.handleNetworkCancel)))
+	mux.Handle("POST /admin/settings/cert", s.requireAuth(http.HandlerFunc(s.handleCertRegenerate)))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusNotFound, "http.notfound")
@@ -128,24 +173,45 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
 }
 
+// langCookie guarda el idioma elegido en /setup antes de que exista el ajuste.
+const langCookie = "qaphi_lang"
+
+// lang devuelve el idioma de la petición: el ajuste global si ya existe; si
+// no (antes del setup), el elegido en /setup o el del navegador.
+func (s *Server) lang(r *http.Request) msg.Lang {
+	if ui := s.Settings.UI(); ui.LangSet {
+		return ui.Lang
+	}
+	if c, err := r.Cookie(langCookie); err == nil {
+		if l, ok := msg.Parse(c.Value); ok {
+			return l
+		}
+	}
+	return msg.Negotiate(r.Header.Get("Accept-Language"))
+}
+
 // pageData es lo que reciben todas las páginas.
 type pageData struct {
+	Lang     msg.Lang
 	Title    string
 	LoggedIn bool
 	CSRF     string // token para los formularios de la página
 	Flash    string // mensaje de confirmación
+	Alert    string // aviso destacado (p. ej. cambio de red deshecho)
 	Active   string // sección activa del menú
-	Refresh  int    // segundos para la recarga automática (0 = sin recarga)
+	ThemeCSS string // URL de la hoja de estilos del tema
+	Live     string // URL de datos en vivo (activa live.js)
 	Body     any    // datos propios de la página
 }
 
 // render ejecuta la plantilla en un buffer antes de escribir nada, para no
 // enviar una página a medias si la plantilla falla.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, name string, data pageData) {
-	t, ok := s.pages[name]
+	data.Lang = s.lang(r)
+	t, ok := s.pages[data.Lang][name]
 	if !ok {
-		s.Log.Error("plantilla inexistente", "plantilla", name)
-		http.Error(w, msg.T("http.internal"), http.StatusInternalServerError)
+		s.Log.Error("unknown template", "template", name)
+		http.Error(w, msg.T(data.Lang, "http.internal"), http.StatusInternalServerError)
 		return
 	}
 	if sess, ok := sessionFrom(r); ok {
@@ -154,25 +220,30 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, name
 			data.CSRF = sess.CSRF
 		}
 	}
+	data.ThemeCSS = s.themeURL(s.Settings.UI().Theme)
 	var buf bytes.Buffer
 	if err := t.ExecuteTemplate(&buf, "layout", data); err != nil {
-		s.Log.Error("error al generar la página", "plantilla", name, "ruta", r.URL.Path, "error", err)
-		http.Error(w, msg.T("http.internal"), http.StatusInternalServerError)
+		s.Log.Error("template execution failed", "template", name, "path", r.URL.Path, "error", err)
+		http.Error(w, msg.T(data.Lang, "http.internal"), http.StatusInternalServerError)
 		return
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	h.Set("Cache-Control", "no-store") // las páginas tienen datos de sesión o de estado
+	h.Set("Content-Language", string(data.Lang))
 	w.WriteHeader(status)
 	_, _ = buf.WriteTo(w)
 }
 
+// T traduce una clave al idioma de la petición.
+func (s *Server) T(r *http.Request, key string) string { return msg.T(s.lang(r), key) }
+
 func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int, key string) {
-	s.render(w, r, status, "error", pageData{Title: msg.T("http.error"), Body: msg.T(key)})
+	s.render(w, r, status, "error", pageData{Title: s.T(r, "http.error"), Body: s.T(r, key)})
 }
 
 func (s *Server) internalError(w http.ResponseWriter, r *http.Request, err error) {
-	s.Log.Error("error al atender una petición", "ruta", r.URL.Path, "error", err)
+	s.Log.Error("request failed", "path", r.URL.Path, "error", err)
 	s.renderError(w, r, http.StatusInternalServerError, "http.internal")
 }
 
@@ -189,7 +260,7 @@ func redirect(w http.ResponseWriter, r *http.Request, to string) {
 func loadPages(fsys fs.FS, funcs template.FuncMap) (map[string]*template.Template, error) {
 	base, err := template.New("").Funcs(funcs).ParseFS(fsys, "templates/*.html")
 	if err != nil {
-		return nil, fmt.Errorf("cargar plantillas comunes: %w", err)
+		return nil, fmt.Errorf("load shared templates: %w", err)
 	}
 	files, err := fs.Glob(fsys, "templates/pages/*.html")
 	if err != nil {
@@ -202,9 +273,38 @@ func loadPages(fsys fs.FS, funcs template.FuncMap) (map[string]*template.Templat
 			return nil, err
 		}
 		if _, err := t.ParseFS(fsys, f); err != nil {
-			return nil, fmt.Errorf("cargar plantilla %s: %w", f, err)
+			return nil, fmt.Errorf("load template %s: %w", f, err)
 		}
 		pages[strings.TrimSuffix(path.Base(f), ".html")] = t
 	}
 	return pages, nil
+}
+
+// ---------------------------------------------------------------- temas
+
+func (s *Server) themeURL(id string) string {
+	c, ok := s.themes[id]
+	if !ok {
+		id, c = theme.DefaultID, s.themes[theme.DefaultID]
+	}
+	return "/theme/" + id + ".css?v=" + c.ETag
+}
+
+// handleTheme sirve la hoja de estilos generada de un tema.
+func (s *Server) handleTheme(w http.ResponseWriter, r *http.Request) {
+	id, ok := strings.CutSuffix(r.PathValue("file"), ".css")
+	c, found := s.themes[id]
+	if !ok || !found {
+		http.NotFound(w, r)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/css; charset=utf-8")
+	h.Set("ETag", `"`+c.ETag+`"`)
+	if r.URL.Query().Get("v") == c.ETag {
+		h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		h.Set("Cache-Control", "no-cache")
+	}
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(c.CSS))
 }

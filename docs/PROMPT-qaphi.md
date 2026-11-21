@@ -253,6 +253,7 @@ qaphi/
 │   ├── logging/               # logger slog
 │   ├── module/                # registro genérico de módulos y declaración de campos
 │   ├── msg/                   # catálogos de textos por idioma (es, en, de, fr)
+│   ├── settings/              # ajustes globales (idioma, tema, zona horaria) con caché
 │   ├── theme/                 # registro de temas (variables CSS)
 │   ├── netcfg/                # red: escucha, HTTP/HTTPS, certificado, confirmación
 │   ├── version/               # versión inyectada al compilar

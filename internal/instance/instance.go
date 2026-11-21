@@ -20,7 +20,7 @@ import (
 const DefaultName = "qaphi"
 
 // ErrAlreadyRunning indica que ya hay otra instancia en marcha.
-var ErrAlreadyRunning = errors.New("ya hay una instancia de qaphi en marcha en este sistema")
+var ErrAlreadyRunning = errors.New("another qaphi instance is already running on this system")
 
 // Lock es el bloqueo de instancia única. Se libera con Release o al terminar
 // el proceso.
@@ -41,7 +41,7 @@ func Acquire(name string) (*Lock, error) {
 			}
 			return nil, ErrAlreadyRunning
 		}
-		return nil, fmt.Errorf("bloqueo de instancia única: %w", err)
+		return nil, fmt.Errorf("single-instance lock: %w", err)
 	}
 	l := &Lock{ln: ln}
 	// Se aceptan y cierran las conexiones entrantes (las de otra instancia

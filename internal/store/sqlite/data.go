@@ -36,7 +36,7 @@ func scanCheck(sc scanner) (model.Check, error) {
 	c.UpdatedAt = time.Unix(updatedAt, 0)
 	c.Params = module.Values{}
 	if err := json.Unmarshal([]byte(params), &c.Params); err != nil {
-		return model.Check{}, fmt.Errorf("parámetros del check %d ilegibles: %w", c.ID, err)
+		return model.Check{}, fmt.Errorf("unreadable params for check %d: %w", c.ID, err)
 	}
 	return c, nil
 }
@@ -45,7 +45,7 @@ func scanCheck(sc scanner) (model.Check, error) {
 func (s *Store) ListChecks(ctx context.Context) ([]model.Check, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+checkColumns+` FROM checks ORDER BY group_name, name, id`)
 	if err != nil {
-		return nil, fmt.Errorf("listar checks: %w", err)
+		return nil, fmt.Errorf("list checks: %w", err)
 	}
 	defer rows.Close()
 	var out []model.Check
@@ -96,7 +96,7 @@ func (s *Store) CreateCheck(ctx context.Context, c *model.Check) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.Name, c.Type, c.Group, intervalSeconds(c.Interval), boolInt(c.Paused), params, now.Unix(), now.Unix())
 	if err != nil {
-		return fmt.Errorf("crear check: %w", err)
+		return fmt.Errorf("create check: %w", err)
 	}
 	if c.ID, err = res.LastInsertId(); err != nil {
 		return err
@@ -117,7 +117,7 @@ func (s *Store) UpdateCheck(ctx context.Context, c *model.Check) error {
 		WHERE id = ?`,
 		c.Name, c.Type, c.Group, intervalSeconds(c.Interval), boolInt(c.Paused), params, now, c.ID)
 	if err != nil {
-		return fmt.Errorf("actualizar check %d: %w", c.ID, err)
+		return fmt.Errorf("update check %d: %w", c.ID, err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return store.ErrNotFound
@@ -130,7 +130,7 @@ func (s *Store) UpdateCheck(ctx context.Context, c *model.Check) error {
 func (s *Store) DeleteCheck(ctx context.Context, id int64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM checks WHERE id = ?`, id)
 	if err != nil {
-		return fmt.Errorf("borrar check %d: %w", id, err)
+		return fmt.Errorf("delete check %d: %w", id, err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return store.ErrNotFound
@@ -149,24 +149,24 @@ func (s *Store) InsertResults(ctx context.Context, rs []model.Result) error {
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("volcar resultados: %w", err)
+		return fmt.Errorf("flush results: %w", err)
 	}
 	defer tx.Rollback() // sin efecto si ya se confirmó
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO results (check_id, ts_ms, ok, latency_us, message)
 		SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM checks WHERE id = ?)`)
 	if err != nil {
-		return fmt.Errorf("volcar resultados: %w", err)
+		return fmt.Errorf("flush results: %w", err)
 	}
 	defer stmt.Close()
 	for _, r := range rs {
 		if _, err := stmt.ExecContext(ctx, r.CheckID, r.At.UnixMilli(), boolInt(r.OK),
 			r.Latency.Microseconds(), r.Message, r.CheckID); err != nil {
-			return fmt.Errorf("volcar resultados: %w", err)
+			return fmt.Errorf("flush results: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("volcar resultados: %w", err)
+		return fmt.Errorf("flush results: %w", err)
 	}
 	return nil
 }
@@ -180,7 +180,7 @@ func (s *Store) LastResults(ctx context.Context) (map[int64]model.Result, error)
 		JOIN (SELECT check_id, MAX(ts_ms) AS ts_ms FROM results GROUP BY check_id) m
 		  ON m.check_id = r.check_id AND m.ts_ms = r.ts_ms`)
 	if err != nil {
-		return nil, fmt.Errorf("leer últimos resultados: %w", err)
+		return nil, fmt.Errorf("read last results: %w", err)
 	}
 	defer rows.Close()
 	out := map[int64]model.Result{}
@@ -208,7 +208,7 @@ func (s *Store) CreateSession(ctx context.Context, sess model.Session) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions (id_hash, csrf, created_at, expires_at) VALUES (?, ?, ?, ?)`,
 		sess.IDHash, sess.CSRF, sess.CreatedAt.Unix(), sess.ExpiresAt.Unix())
 	if err != nil {
-		return fmt.Errorf("crear sesión: %w", err)
+		return fmt.Errorf("create session: %w", err)
 	}
 	return nil
 }
@@ -225,7 +225,7 @@ func (s *Store) GetSession(ctx context.Context, idHash []byte) (model.Session, e
 		return model.Session{}, store.ErrNotFound
 	}
 	if err != nil {
-		return model.Session{}, fmt.Errorf("leer sesión: %w", err)
+		return model.Session{}, fmt.Errorf("read session: %w", err)
 	}
 	sess.CreatedAt, sess.ExpiresAt = time.Unix(created, 0), time.Unix(expires, 0)
 	return sess, nil

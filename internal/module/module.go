@@ -75,21 +75,21 @@ var (
 // fallo de programación del módulo.
 func (info Info) Validate() error {
 	if !idRe.MatchString(info.ID) {
-		return fmt.Errorf("id de módulo no válido %q", info.ID)
+		return fmt.Errorf("invalid module id %q", info.ID)
 	}
 	if err := checkText(info.Name, true); err != nil {
-		return fmt.Errorf("módulo %q: nombre: %w", info.ID, err)
+		return fmt.Errorf("module %q: name: %w", info.ID, err)
 	}
 	if err := checkText(info.Description, false); err != nil {
-		return fmt.Errorf("módulo %q: descripción: %w", info.ID, err)
+		return fmt.Errorf("module %q: description: %w", info.ID, err)
 	}
 	seen := map[string]bool{}
 	for _, f := range info.Fields {
 		if err := f.validate(); err != nil {
-			return fmt.Errorf("módulo %q: campo %q: %w", info.ID, f.Key, err)
+			return fmt.Errorf("module %q: field %q: %w", info.ID, f.Key, err)
 		}
 		if seen[f.Key] {
-			return fmt.Errorf("módulo %q: campo duplicado %q", info.ID, f.Key)
+			return fmt.Errorf("module %q: duplicate field %q", info.ID, f.Key)
 		}
 		seen[f.Key] = true
 	}
@@ -98,13 +98,13 @@ func (info Info) Validate() error {
 
 func (f Field) validate() error {
 	if !keyRe.MatchString(f.Key) {
-		return fmt.Errorf("clave no válida")
+		return fmt.Errorf("invalid key")
 	}
 	if err := checkText(f.Label, true); err != nil {
-		return fmt.Errorf("etiqueta: %w", err)
+		return fmt.Errorf("label: %w", err)
 	}
 	if err := checkText(f.Help, false); err != nil {
-		return fmt.Errorf("ayuda: %w", err)
+		return fmt.Errorf("help: %w", err)
 	}
 	switch f.Type {
 	case Text, TextArea, Secret, Bool:
@@ -112,7 +112,7 @@ func (f Field) validate() error {
 		for _, s := range []string{f.Min, f.Max} {
 			if s != "" {
 				if _, err := strconv.ParseInt(s, 10, 64); err != nil {
-					return fmt.Errorf("límite no válido %q", s)
+					return fmt.Errorf("invalid limit %q", s)
 				}
 			}
 		}
@@ -120,36 +120,36 @@ func (f Field) validate() error {
 		for _, s := range []string{f.Min, f.Max} {
 			if s != "" {
 				if _, err := time.ParseDuration(s); err != nil {
-					return fmt.Errorf("límite no válido %q", s)
+					return fmt.Errorf("invalid limit %q", s)
 				}
 			}
 		}
 	case Select:
 		if len(f.Options) == 0 {
-			return fmt.Errorf("un select necesita opciones")
+			return fmt.Errorf("a select field needs options")
 		}
 		vals := map[string]bool{}
 		for _, o := range f.Options {
 			if vals[o.Value] {
-				return fmt.Errorf("opción duplicada %q", o.Value)
+				return fmt.Errorf("duplicate option %q", o.Value)
 			}
 			vals[o.Value] = true
 			if err := checkText(o.Label, true); err != nil {
-				return fmt.Errorf("opción %q: %w", o.Value, err)
+				return fmt.Errorf("option %q: %w", o.Value, err)
 			}
 		}
 	default:
-		return fmt.Errorf("tipo desconocido %q", f.Type)
+		return fmt.Errorf("unknown type %q", f.Type)
 	}
 	if (f.Min != "" || f.Max != "") && f.Type != Int && f.Type != Duration {
-		return fmt.Errorf("Min/Max solo se admiten en campos int y duration")
+		return fmt.Errorf("min/max are only allowed on int and duration fields")
 	}
 	if f.MaxLen < 0 {
-		return fmt.Errorf("MaxLen negativo")
+		return fmt.Errorf("negative MaxLen")
 	}
 	if f.Default != "" {
-		if _, msgErr := f.normalize(f.Default); msgErr != "" {
-			return fmt.Errorf("valor por defecto %q no válido: %s", f.Default, msgErr)
+		if _, msgErr := f.normalize(f.Default); !msgErr.IsZero() {
+			return fmt.Errorf("invalid default value %q: %s", f.Default, msgErr)
 		}
 	}
 	return nil
@@ -159,12 +159,12 @@ func (f Field) validate() error {
 func checkText(key string, required bool) error {
 	if key == "" {
 		if required {
-			return fmt.Errorf("falta la clave de texto")
+			return fmt.Errorf("missing text key")
 		}
 		return nil
 	}
 	if !msg.Has(key) {
-		return fmt.Errorf("clave de texto sin registrar %q", key)
+		return fmt.Errorf("unregistered text key %q", key)
 	}
 	return nil
 }

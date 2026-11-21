@@ -40,7 +40,7 @@ type fieldView struct {
 	Checked   bool
 	Required  bool
 	MaxLen    int
-	Error     string
+	Error     string // ya traducido
 	Options   []optionView
 	HasSecret bool // secreto ya guardado: vacío = conservar
 }
@@ -51,8 +51,9 @@ type optionView struct {
 }
 
 // buildFields prepara los campos de una declaración con sus valores y
-// errores. saved indica qué secretos tienen ya un valor guardado.
-func buildFields(info module.Info, prefix string, values module.Values, errs module.Errors, saved module.Values) []fieldView {
+// errores (traducidos a l). saved indica qué secretos tienen ya un valor
+// guardado.
+func buildFields(l msg.Lang, info module.Info, prefix string, values module.Values, errs module.Errors, saved module.Values) []fieldView {
 	out := make([]fieldView, 0, len(info.Fields))
 	for _, f := range info.Fields {
 		v, ok := values[f.Key]
@@ -61,7 +62,7 @@ func buildFields(info module.Info, prefix string, values module.Values, errs mod
 		}
 		fv := fieldView{
 			Name: prefix + f.Key, Label: f.Label, Help: f.Help, Type: f.Type,
-			Value: v, Required: f.Required, MaxLen: f.MaxLen, Error: errs[f.Key],
+			Value: v, Required: f.Required, MaxLen: f.MaxLen, Error: errs[f.Key].In(l),
 		}
 		switch f.Type {
 		case module.Bool:
@@ -103,15 +104,19 @@ func readValues(form url.Values, info module.Info, prefix string, saved module.V
 
 // flashMessages son los mensajes de confirmación admitidos en ?m=.
 var flashMessages = map[string]string{
-	"created": "flash.created",
-	"updated": "flash.updated",
-	"deleted": "flash.deleted",
-	"welcome": "flash.welcome",
+	"created":   "flash.created",
+	"updated":   "flash.updated",
+	"deleted":   "flash.deleted",
+	"welcome":   "flash.welcome",
+	"settings":  "flash.settings",
+	"network":   "flash.network",
+	"cancelled": "flash.cancelled",
+	"cert":      "flash.cert",
 }
 
-func flash(q url.Values) string {
+func flash(l msg.Lang, q url.Values) string {
 	if k, ok := flashMessages[q.Get("m")]; ok {
-		return msg.T(k)
+		return msg.T(l, k)
 	}
 	return ""
 }

@@ -1,10 +1,10 @@
 package state
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/future-chocolate6122/qaphi/internal/model"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 )
 
 // Summary es el resumen global del estado.
@@ -44,24 +44,31 @@ func Summarize(checks []model.Check, snap map[int64]CheckState) Summary {
 	return s
 }
 
-// String devuelve el resumen de una línea: «4/4 (todos up)», «3/4 (1 caído)».
-func (s Summary) String() string {
+// In devuelve el resumen de una línea en el idioma l: «4/4 (todos up)»,
+// «3/4 (1 caído)», «1/3 (1 caído, 1 sin datos)».
+func (s Summary) In(l msg.Lang) string {
 	if s.Total == 0 {
-		return "0/0 (sin checks activos)"
+		return msg.T(l, "summary.none")
 	}
 	var parts []string
-	if s.Down > 0 {
-		parts = append(parts, plural(s.Down, "caído", "caídos"))
+	switch {
+	case s.Down == 1:
+		parts = append(parts, msg.F(l, "summary.down.one", s.Down))
+	case s.Down > 1:
+		parts = append(parts, msg.F(l, "summary.down.many", s.Down))
 	}
 	if s.Unknown > 0 {
-		parts = append(parts, fmt.Sprintf("%d sin datos", s.Unknown))
+		parts = append(parts, msg.F(l, "summary.unknown", s.Unknown))
 	}
-	detail := "todos up"
+	detail := msg.T(l, "summary.all_up")
 	if len(parts) > 0 {
 		detail = strings.Join(parts, ", ")
 	}
-	return fmt.Sprintf("%d/%d (%s)", s.Up, s.Total, detail)
+	return msg.F(l, "summary.format", s.Up, s.Total, detail)
 }
+
+// String devuelve el resumen en inglés (consola, logs).
+func (s Summary) String() string { return s.In(msg.EN) }
 
 // Level es el nivel global: "up", "down" o "unknown".
 func (s Summary) Level() model.Status {
@@ -73,11 +80,4 @@ func (s Summary) Level() model.Status {
 	default:
 		return model.StatusUp
 	}
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }

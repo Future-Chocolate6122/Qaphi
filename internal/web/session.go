@@ -62,7 +62,7 @@ func (s *Server) currentSession(r *http.Request) (model.Session, bool) {
 	sess, err := s.Sessions.Lookup(r.Context(), c.Value)
 	if err != nil {
 		if !errors.Is(err, auth.ErrNoSession) {
-			s.Log.Error("error al validar la sesión", "error", err)
+			s.Log.Error("session validation failed", "error", err)
 		}
 		return model.Session{}, false
 	}
@@ -85,7 +85,7 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		}
 		if !safeMethod(r.Method) {
 			if !sameOrigin(r) || !tokenEqual(r.PostFormValue(csrfField), sess.CSRF) {
-				s.Log.Warn("petición rechazada por CSRF", "ruta", r.URL.Path, "remoto", r.RemoteAddr)
+				s.Log.Warn("request rejected by CSRF check", "path", r.URL.Path, "remote", r.RemoteAddr)
 				s.renderError(w, r, http.StatusForbidden, "http.forbidden")
 				return
 			}

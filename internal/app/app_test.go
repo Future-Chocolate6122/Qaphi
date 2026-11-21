@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -18,6 +20,8 @@ import (
 	"time"
 
 	"github.com/future-chocolate6122/qaphi/internal/config"
+	"github.com/future-chocolate6122/qaphi/internal/netcfg"
+	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
 )
 
 // TestCicloDeVida comprueba el criterio de la fase 0: arranca, crea
@@ -35,7 +39,7 @@ func TestCicloDeVida(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, DBFileName)); err != nil {
 		t.Fatalf("no se creó la base de datos: %v", err)
 	}
-	if fi, _ := os.Stat(dir); fi.Mode().Perm()&0o077 != 0 && !strings.Contains(logs.String(), "accesible") {
+	if fi, _ := os.Stat(dir); fi.Mode().Perm()&0o077 != 0 && !strings.Contains(logs.String(), "accessible") {
 		t.Errorf("permisos del directorio de datos = %o", fi.Mode().Perm())
 	}
 
@@ -98,13 +102,13 @@ func TestPuertoOcupado(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	cfg := &config.Config{Listen: ln.Addr().String(), DataDir: t.TempDir()}
+	cfg := &config.Config{Listen: ln.Addr().String(), DataDir: t.TempDir(), FlushInterval: time.Minute}
 	a, err := New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	if err := a.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "escuchar") {
+	if err := a.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "listen on") {
 		t.Fatalf("se esperaba error al escuchar en un puerto ocupado: %v", err)
 	}
 }
@@ -250,7 +254,7 @@ func TestCriterioFase1(t *testing.T) {
 	// 3. /home se actualiza en unos segundos (los checks nuevos se ejecutan enseguida).
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		if body := get("/home"); strings.Contains(body, "3/3 (todos up)") {
+		if body := get("/home"); strings.Contains(body, "3/3 (all up)") {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -261,7 +265,7 @@ func TestCriterioFase1(t *testing.T) {
 
 	// 4. Reinicio: la parada vuelca el buffer y todo persiste.
 	r.stop(t)
-	if !strings.Contains(logs.String(), "buffer volcado") {
+	if !strings.Contains(logs.String(), "buffer flushed") {
 		t.Error("la parada no volcó el buffer")
 	}
 	r = start(t, cfg, logs)
@@ -278,10 +282,167 @@ func TestCriterioFase1(t *testing.T) {
 		}
 	}
 	// El último resultado se restaura: no vuelven a «sin datos».
-	if !strings.Contains(body, "3/3 (todos up)") {
+	if !strings.Contains(body, "3/3 (all up)") {
 		t.Errorf("tras reiniciar no se restauró el estado:\n%s", body)
 	}
-	if strings.Count(logs.String(), "configuración inicial pendiente") != 1 {
+	if strings.Count(logs.String(), "initial setup pending") != 1 {
 		t.Error("tras configurar la contraseña no debe volver a pedirse el token")
+	}
+}
+
+// langTransport añade Accept-Language a todas las peticiones y acepta el
+// certificado autofirmado.
+type langTransport struct{ base http.RoundTripper }
+
+func (t langTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.Header.Set("Accept-Language", "es-ES,es;q=0.9")
+	return t.base.RoundTrip(r)
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	return ln.Addr().(*net.TCPAddr).Port
+}
+
+// TestCriterioFase2: cambiar idioma y tema y verlos en todas las páginas;
+// pasar a HTTPS en otro puerto y confirmar; repetir sin confirmar y comprobar
+// que vuelve sola a la configuración anterior.
+func TestCriterioFase2(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	portA, portB := freePort(t), freePort(t)
+	// Configuración de red inicial: HTTP en 127.0.0.1:portA.
+	st, err := sqlite.Open(ctx, filepath.Join(dir, DBFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netcfg.Save(ctx, st, netcfg.Config{Bind: "127.0.0.1", Port: portA}); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+
+	logs := &syncBuffer{}
+	cfg := &config.Config{DataDir: dir, FlushInterval: time.Minute}
+	a, err := New(ctx, cfg, slog.New(slog.NewTextHandler(logs, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.NetWindow, a.NetSwapDelay = 2*time.Second, 50*time.Millisecond
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- a.Serve(runCtx, nil) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Serve: %v", err)
+		}
+		a.Close()
+	}()
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar: jar, Timeout: 5 * time.Second,
+		Transport: langTransport{&http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, DisableKeepAlives: true}},
+	}
+	base := func(scheme string, port int) string { return fmt.Sprintf("%s://127.0.0.1:%d", scheme, port) }
+	get := func(u string) (int, string) {
+		t.Helper()
+		res, err := client.Get(u)
+		if err != nil {
+			return 0, err.Error()
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	post := func(u string, form url.Values) (int, string) {
+		t.Helper()
+		res, err := client.PostForm(u, form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	csrf := func(u string) string {
+		t.Helper()
+		_, body := get(u)
+		m := csrfRe.FindStringSubmatch(body)
+		if m == nil {
+			t.Fatalf("sin token CSRF en %s", u)
+		}
+		return m[1]
+	}
+	waitFor := func(what string, cond func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			if cond() {
+				return
+			}
+		}
+		t.Fatalf("no se cumplió: %s", what)
+	}
+	httpA := base("http", portA)
+
+	// Setup (en castellano, por el idioma del navegador).
+	var token []string
+	waitFor("token en el log", func() bool { token = tokenRe.FindStringSubmatch(logs.String()); return token != nil })
+	if !strings.Contains(logs.String(), fmt.Sprintf("listen=127.0.0.1:%d scheme=http", portA)) {
+		t.Fatalf("el log de arranque debe indicar dirección y protocolo:\n%s", logs.String())
+	}
+	pw := "contraseña de la fase dos"
+	if code, body := post(httpA+"/setup", url.Values{"csrf": {csrf(httpA + "/setup")}, "token": {token[1]}, "password": {pw}, "confirm": {pw}}); code != 200 || !strings.Contains(body, "Contraseña guardada") {
+		t.Fatalf("setup: %d", code)
+	}
+
+	// 1. Idioma y tema: alemán y oscuro, en todas las páginas.
+	tok := csrf(httpA + "/admin/settings")
+	if code, _ := post(httpA+"/admin/settings", url.Values{"csrf": {tok}, "language": {"de"}, "theme": {"dark"}, "timezone": {"Europe/Berlin"}}); code != 200 {
+		t.Fatalf("guardar ajustes: %d", code)
+	}
+	for path, want := range map[string]string{"/home": "Dienststatus", "/admin": "Neuer Check", "/admin/settings": "Einstellungen", "/admin/checks/new?type=http": "Erwartete Statuscodes"} {
+		_, body := get(httpA + path)
+		if !strings.Contains(body, want) || !strings.Contains(body, `lang="de"`) || !strings.Contains(body, "/theme/dark.css") {
+			t.Errorf("%s no está en alemán con el tema oscuro", path)
+		}
+	}
+
+	// 2. HTTPS en otro puerto, confirmado desde la dirección nueva.
+	httpsB := base("https", portB)
+	code, body := post(httpA+"/admin/settings/network", url.Values{"csrf": {tok}, "bind": {"127.0.0.1"}, "port": {strconv.Itoa(portB)}, "protocol": {"https"}})
+	if code != 200 || !strings.Contains(body, httpsB+"/admin/settings/network/confirm") {
+		t.Fatalf("aplicar red: %d %.400s", code, body)
+	}
+	if code, _ := get(httpA + "/home"); code != 200 {
+		t.Fatal("durante el cambio, la dirección anterior debe seguir respondiendo")
+	}
+	if code, _ := get(httpsB + "/admin/settings/network/confirm"); code != 200 {
+		t.Fatalf("página de confirmación por HTTPS: %d", code)
+	}
+	if code, body := post(httpsB+"/admin/settings/network/confirm", url.Values{"csrf": {tok}}); code != 200 || !strings.Contains(body, "Netzwerkeinstellungen bestätigt") {
+		t.Fatalf("confirmar: %d %.300s", code, body)
+	}
+	waitFor("la dirección anterior deja de responder", func() bool { c, _ := get(httpA + "/home"); return c == 0 })
+
+	// 3. Sin confirmar: volver a HTTP en el mismo puerto (cambio en el sitio).
+	code, body = post(httpsB+"/admin/settings/network", url.Values{"csrf": {tok}, "bind": {"127.0.0.1"}, "port": {strconv.Itoa(portB)}, "protocol": {"http"}})
+	if code != 200 || !strings.Contains(body, "Port gleich") {
+		t.Fatalf("cambio en el sitio: %d %.400s", code, body)
+	}
+	httpB := base("http", portB)
+	waitFor("pasa a HTTP", func() bool { c, _ := get(httpB + "/home"); return c == 200 })
+	waitFor("vuelve sola a HTTPS al vencer el plazo", func() bool { c, _ := get(httpsB + "/home"); return c == 200 })
+	if _, body := get(httpsB + "/admin/settings"); !strings.Contains(body, "nicht rechtzeitig bestätigt") {
+		t.Error("los ajustes deben avisar de que el cambio se deshizo")
+	}
+	saved, err := netcfg.Load(ctx, a.store, false)
+	if err != nil || saved != (netcfg.Config{Bind: "127.0.0.1", Port: portB, TLS: true}) {
+		t.Fatalf("configuración guardada = %+v, %v", saved, err)
 	}
 }

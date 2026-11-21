@@ -1,0 +1,18 @@
+{{define "content"}}
+<section class="card narrow">
+  <h1>{{t "settings.net.confirm.title"}}</h1>
+  {{with .Body.Message}}<p class="alert" role="alert">{{.}}</p>{{end}}
+  {{if .Body.Pending}}
+  {{if not .Body.Message}}<p>{{t "settings.net.confirm.text"}}</p>{{end}}
+  <form method="post" action="/admin/settings/network/confirm">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="buttons">
+      <button type="submit" class="primary">{{t "settings.net.confirm.submit"}}</button>
+      <a href="/admin/settings">{{t "form.cancel"}}</a>
+    </div>
+  </form>
+  {{else}}
+  <p><a href="/admin/settings">{{t "settings.title"}}</a></p>
+  {{end}}
+</section>
+{{end}}

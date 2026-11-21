@@ -83,21 +83,21 @@ func (in *Installer) say(format string, args ...any) { fmt.Fprintf(in.Out, forma
 func (in *Installer) preflight(needUseradd bool) error {
 	var problems []string
 	if in.Sys.Euid() != 0 {
-		problems = append(problems, "hace falta ejecutarlo como root: usa «sudo»")
+		problems = append(problems, "it must run as root: use sudo")
 	}
 	if fi, err := os.Stat(in.path("/run/systemd/system")); err != nil || !fi.IsDir() {
-		problems = append(problems, "el sistema no se ha arrancado con systemd (solo se admite systemd; en otros sistemas ejecuta «qaphi serve» a mano)")
+		problems = append(problems, "the system was not booted with systemd (only systemd is supported; on other systems run 'qaphi serve' yourself)")
 	}
 	if _, err := in.Sys.LookPath("systemctl"); err != nil {
-		problems = append(problems, "no se encuentra «systemctl»")
+		problems = append(problems, "'systemctl' not found")
 	}
 	if needUseradd {
 		if _, err := in.Sys.LookPath("useradd"); err != nil {
-			problems = append(problems, "no se encuentra «useradd» para crear el usuario qaphi")
+			problems = append(problems, "'useradd' not found (needed to create the qaphi user)")
 		}
 	}
 	if len(problems) > 0 {
-		return fmt.Errorf("no se puede continuar; no se ha cambiado nada:\n  - %s", strings.Join(problems, "\n  - "))
+		return fmt.Errorf("cannot continue; nothing was changed:\n  - %s", strings.Join(problems, "\n  - "))
 	}
 	return nil
 }
@@ -125,18 +125,18 @@ func (in *Installer) installedVersion() string {
 func (in *Installer) Install(opts Options) error {
 	_, _, userExists, err := in.Sys.LookupUser(UserName)
 	if err != nil {
-		return fmt.Errorf("consultar el usuario %s: %w", UserName, err)
+		return fmt.Errorf("look up user %s: %w", UserName, err)
 	}
 	if err := in.preflight(!userExists); err != nil {
 		return err
 	}
 	src, err := in.Sys.Executable()
 	if err != nil {
-		return fmt.Errorf("localizar este binario: %w", err)
+		return fmt.Errorf("locate this binary: %w", err)
 	}
 	newBin, err := os.ReadFile(src)
 	if err != nil {
-		return fmt.Errorf("leer este binario: %w", err)
+		return fmt.Errorf("read this binary: %w", err)
 	}
 
 	// ---- Plan: se calcula todo antes de tocar nada.
@@ -153,17 +153,21 @@ func (in *Installer) Install(opts Options) error {
 		}
 	}
 	if _, ok := version.ParseRelease(in.Version); !ok {
-		in.say("Aviso: esta compilación (%s) no es una versión publicada; se instala igualmente.", in.Version)
+		in.say("Warning: this build (%s) is not a released version; installing it anyway.", in.Version)
 	}
 
 	oldEnvRaw, _ := os.ReadFile(in.path(EnvPath))
 	env := parseEnv(string(oldEnvRaw))
 	for k, v := range opts.Env {
-		env[k] = v
+		if v == "" {
+			delete(env, k) // «--listen=» quita la anulación
+		} else {
+			env[k] = v
+		}
 	}
 	env["QAPHI_DATA_DIR"] = DataDir
 	if _, err := config.Parse("serve", nil, func(k string) string { return env[k] }, io.Discard); err != nil {
-		return fmt.Errorf("opciones de arranque no válidas; no se ha cambiado nada:\n%w", err)
+		return fmt.Errorf("invalid startup options; nothing was changed:\n%w", err)
 	}
 	newEnvRaw := []byte(formatEnv(env))
 	oldUnit, _ := os.ReadFile(in.path(UnitPath))
@@ -178,22 +182,22 @@ func (in *Installer) Install(opts Options) error {
 		wasActive, wasEnabled = in.isActive(), in.isEnabled()
 	}
 	if upgrade && !binChanged && !envChanged && !unitChanged {
-		state := "detenido"
+		state := "stopped"
 		if wasActive {
-			state = "en marcha"
+			state = "running"
 		}
-		in.say("Qaphi %s ya está instalado y al día; no hay nada que cambiar (servicio %s).", in.Version, state)
+		in.say("Qaphi %s is already installed and up to date; nothing to change (service %s).", in.Version, state)
 		return nil
 	}
 
 	if upgrade {
 		from := oldVersion
 		if from == "" {
-			from = "versión desconocida"
+			from = "unknown version"
 		}
-		in.say("Actualizando Qaphi: %s → %s", from, in.Version)
+		in.say("Updating Qaphi: %s -> %s", from, in.Version)
 	} else {
-		in.say("Instalando Qaphi %s", in.Version)
+		in.say("Installing Qaphi %s", in.Version)
 	}
 
 	// ---- Usuario y directorios.
@@ -207,9 +211,9 @@ func (in *Installer) Install(opts Options) error {
 
 	// ---- Parada ordenada (vuelca el buffer de resultados).
 	if wasActive {
-		in.say("· Deteniendo el servicio (se vuelcan los resultados pendientes)…")
+		in.say("- Stopping the service (pending results are flushed)...")
 		if err := in.systemctl("stop", ServiceName); err != nil {
-			return fmt.Errorf("detener el servicio: %w", err)
+			return fmt.Errorf("stop the service: %w", err)
 		}
 	}
 
@@ -238,38 +242,39 @@ func (in *Installer) Install(opts Options) error {
 	started := time.Now()
 	switch {
 	case !upgrade:
-		in.say("· Habilitando y arrancando el servicio…")
+		in.say("- Enabling and starting the service...")
 		err = in.systemctl("enable", "--now", ServiceName)
 	default:
 		if wasEnabled {
 			err = in.systemctl("enable", ServiceName)
 		}
 		if err == nil && wasActive {
-			in.say("· Arrancando el servicio…")
+			in.say("- Starting the service...")
 			err = in.systemctl("start", ServiceName)
 		}
 	}
+	var ep endpoint
 	if err == nil && shouldRun {
-		err = in.waitHealthy(env["QAPHI_LISTEN"])
+		ep, err = in.waitHealthy(env["QAPHI_LISTEN"], started)
 	}
 	if err != nil {
 		if backup != nil {
-			in.say("La versión nueva no arranca correctamente: %v", err)
+			in.say("The new version does not start correctly: %v", err)
 			in.rollback(backup, wasActive)
-			return fmt.Errorf("actualización fallida; se ha restaurado la versión anterior. Revisa el log: journalctl -u %s", ServiceName)
+			return fmt.Errorf("update failed; the previous version was restored. Check the log: journalctl -u %s", ServiceName)
 		}
-		return fmt.Errorf("el servicio no arranca correctamente: %w. Revisa el log: journalctl -u %s", err, ServiceName)
+		return fmt.Errorf("the service does not start correctly: %w. Check the log: journalctl -u %s", err, ServiceName)
 	}
 
 	// ---- Resumen.
 	switch {
 	case !upgrade:
-		in.say("✓ Qaphi %s instalado y en marcha.", in.Version)
-		in.printSetupHint(env["QAPHI_LISTEN"], started)
+		in.say("OK: Qaphi %s installed and running.", in.Version)
+		in.printSetupHint(ep, started)
 	case wasActive:
-		in.say("✓ Qaphi actualizado a %s y en marcha. Datos conservados.", in.Version)
+		in.say("OK: Qaphi updated to %s and running (%s). Data preserved.", in.Version, ep.display())
 	default:
-		in.say("✓ Qaphi actualizado a %s. El servicio estaba detenido y sigue detenido (arráncalo con «sudo systemctl start %s»).", in.Version, ServiceName)
+		in.say("OK: Qaphi updated to %s. The service was stopped and remains stopped (start it with 'sudo systemctl start %s').", in.Version, ServiceName)
 	}
 	return nil
 }
@@ -279,7 +284,7 @@ func checkVersions(newV, oldV string, force bool) error {
 	nv, nok := version.ParseRelease(newV)
 	ov, ook := version.ParseRelease(oldV)
 	if nok && ook && nv.Compare(ov) < 0 && !force {
-		return fmt.Errorf("la versión instalada (%s) es más reciente que esta (%s); no se ha cambiado nada. Usa --force para instalar una anterior", oldV, newV)
+		return fmt.Errorf("the installed version (%s) is newer than this one (%s); nothing was changed. Use --force to install an older version", oldV, newV)
 	}
 	return nil
 }
@@ -301,15 +306,15 @@ func (in *Installer) ensureUser(exists bool) (int, int, error) {
 				break
 			}
 		}
-		in.say("· Creando el usuario de sistema %s (sin contraseña ni shell)…", UserName)
+		in.say("- Creating system user %s (no password, no shell)...", UserName)
 		if _, err := in.Sys.Run("useradd", "--system", "--user-group", "--home-dir", DataDir,
 			"--no-create-home", "--shell", shell, UserName); err != nil {
-			return 0, 0, fmt.Errorf("crear el usuario %s: %w", UserName, err)
+			return 0, 0, fmt.Errorf("create user %s: %w", UserName, err)
 		}
 	}
 	uid, gid, ok, err := in.Sys.LookupUser(UserName)
 	if err != nil || !ok {
-		return 0, 0, fmt.Errorf("el usuario %s no existe tras crearlo: %v", UserName, err)
+		return 0, 0, fmt.Errorf("user %s does not exist after creating it: %v", UserName, err)
 	}
 	return uid, gid, nil
 }
@@ -319,7 +324,7 @@ func (in *Installer) ensureUser(exists bool) (int, int, error) {
 func (in *Installer) ensureDataDir(uid, gid int) error {
 	dir := in.path(DataDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("crear %s: %w", DataDir, err)
+		return fmt.Errorf("create %s: %w", DataDir, err)
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return err
@@ -336,7 +341,7 @@ func (in *Installer) ensureDataDir(uid, gid int) error {
 	}
 	for _, p := range paths {
 		if err := in.Sys.Chown(p, uid, gid); err != nil {
-			return fmt.Errorf("asignar propietario a %s: %w", p, err)
+			return fmt.Errorf("set owner of %s: %w", p, err)
 		}
 	}
 	return nil
@@ -354,12 +359,12 @@ func (in *Installer) backup(oldEnv, oldUnit []byte, binary bool, uid, gid int) (
 	st := &rollbackState{oldEnv: oldEnv, oldUnit: oldUnit, hadBinary: binary, uid: uid, gid: gid}
 	if binary {
 		if err := copyFile(in.path(BinPath), in.path(PrevPath), 0o755); err != nil {
-			return nil, fmt.Errorf("guardar el binario anterior: %w", err)
+			return nil, fmt.Errorf("save the previous binary: %w", err)
 		}
 	}
 	db := in.path(filepath.Join(DataDir, dbFile))
 	if _, err := os.Stat(db); err == nil {
-		in.say("· Copiando la base de datos (%s%s)…", dbFile, backupSufx)
+		in.say("- Backing up the database (%s%s)...", dbFile, backupSufx)
 		for _, suffix := range []string{"", "-wal"} {
 			src := db + suffix
 			dst := db + suffix + backupSufx
@@ -368,7 +373,7 @@ func (in *Installer) backup(oldEnv, oldUnit []byte, binary bool, uid, gid int) (
 				continue
 			}
 			if err := copyFile(src, dst, 0o600); err != nil {
-				return nil, fmt.Errorf("copiar la base de datos: %w", err)
+				return nil, fmt.Errorf("back up the database: %w", err)
 			}
 			_ = in.Sys.Chown(dst, uid, gid)
 		}
@@ -379,9 +384,9 @@ func (in *Installer) backup(oldEnv, oldUnit []byte, binary bool, uid, gid int) (
 
 func (in *Installer) apply(writeBin bool, bin []byte, writeEnv bool, env []byte, writeUnit bool, unit []byte) error {
 	if writeBin {
-		in.say("· Copiando el binario a %s…", BinPath)
+		in.say("- Copying the binary to %s...", BinPath)
 		if err := writeFileAtomic(in.path(BinPath), bin, 0o755); err != nil {
-			return fmt.Errorf("instalar el binario: %w", err)
+			return fmt.Errorf("install the binary: %w", err)
 		}
 	}
 	if writeEnv {
@@ -389,17 +394,17 @@ func (in *Installer) apply(writeBin bool, bin []byte, writeEnv bool, env []byte,
 			return err
 		}
 		if err := writeFileAtomic(in.path(EnvPath), env, 0o644); err != nil {
-			return fmt.Errorf("guardar las opciones de arranque: %w", err)
+			return fmt.Errorf("save the startup options: %w", err)
 		}
 	}
 	if writeUnit {
 		if err := writeFileAtomic(in.path(UnitPath), unit, 0o644); err != nil {
-			return fmt.Errorf("guardar la unit de systemd: %w", err)
+			return fmt.Errorf("save the systemd unit: %w", err)
 		}
 	}
 	if writeEnv || writeUnit {
 		if err := in.systemctl("daemon-reload"); err != nil {
-			return fmt.Errorf("recargar systemd: %w", err)
+			return fmt.Errorf("reload systemd: %w", err)
 		}
 	}
 	return nil
@@ -408,15 +413,15 @@ func (in *Installer) apply(writeBin bool, bin []byte, writeEnv bool, env []byte,
 // rollback restaura binario, base de datos, opciones y unit anteriores, y
 // arranca el servicio si estaba en marcha.
 func (in *Installer) rollback(st *rollbackState, start bool) {
-	in.say("· Volviendo a la versión anterior…")
+	in.say("- Rolling back to the previous version...")
 	_ = in.systemctl("stop", ServiceName)
 	report := func(what string, err error) {
 		if err != nil {
-			in.say("  ! no se pudo restaurar %s: %v", what, err)
+			in.say("  ! could not restore %s: %v", what, err)
 		}
 	}
 	if st.hadBinary {
-		report("el binario", copyFileAtomic(in.path(PrevPath), in.path(BinPath), 0o755))
+		report("the binary", copyFileAtomic(in.path(PrevPath), in.path(BinPath), 0o755))
 	}
 	if st.dbBackedUp {
 		db := in.path(filepath.Join(DataDir, dbFile))
@@ -424,34 +429,78 @@ func (in *Installer) rollback(st *rollbackState, start bool) {
 		for _, suffix := range []string{"", "-wal"} {
 			if _, err := os.Stat(db + suffix + backupSufx); err == nil {
 				err := copyFileAtomic(db+suffix+backupSufx, db+suffix, 0o600)
-				report("la base de datos", err)
+				report("the database", err)
 				_ = in.Sys.Chown(db+suffix, st.uid, st.gid)
 			}
 		}
 	}
 	if st.oldEnv != nil {
-		report("las opciones", writeFileAtomic(in.path(EnvPath), st.oldEnv, 0o644))
+		report("the options", writeFileAtomic(in.path(EnvPath), st.oldEnv, 0o644))
 	}
 	if st.oldUnit != nil {
-		report("la unit", writeFileAtomic(in.path(UnitPath), st.oldUnit, 0o644))
+		report("the unit", writeFileAtomic(in.path(UnitPath), st.oldUnit, 0o644))
 	}
 	_ = in.systemctl("daemon-reload")
 	if start {
-		report("el servicio", in.systemctl("start", ServiceName))
+		report("the service", in.systemctl("start", ServiceName))
 	}
 }
 
+// endpoint es la dirección en la que escucha el servicio, según su log.
+type endpoint struct {
+	listen string // host:puerto tal como se configuró
+	scheme string // "http" o "https"
+}
+
+func (e endpoint) display() string { return e.scheme + "://" + e.listen }
+
+// localURL es la URL para comprobar el servicio desde el propio equipo.
+func (e endpoint) localURL() string { return e.scheme + "://" + localAddr(e.listen) + "/" }
+
+var (
+	startedLogRe = regexp.MustCompile(`msg="?qaphi started"?.*?\blisten=(\S+).*?\bscheme=(https?)`)
+	setupLogRe   = regexp.MustCompile(`token=([A-Z2-7]{4}(?:-[A-Z2-7]{4}){3})`)
+	urlLogRe     = regexp.MustCompile(`url="?([^"\n]+)"?`)
+)
+
+// journal devuelve el log del servicio desde since.
+func (in *Installer) journal(since time.Time) string {
+	out, _ := in.Sys.Run("journalctl", "-u", ServiceName+".service", "-o", "cat", "--no-pager",
+		"--since", "@"+strconv.FormatInt(since.Add(-5*time.Second).Unix(), 10))
+	return out
+}
+
+// startedEndpoint busca en el log la última línea de arranque, que indica la
+// dirección y el protocolo reales (pueden haberse cambiado desde la web).
+func startedEndpoint(log string) (endpoint, bool) {
+	ms := startedLogRe.FindAllStringSubmatch(log, -1)
+	if len(ms) == 0 {
+		return endpoint{}, false
+	}
+	m := ms[len(ms)-1]
+	return endpoint{listen: strings.Trim(m[1], `"`), scheme: m[2]}, true
+}
+
 // waitHealthy espera a que systemd dé el servicio por activo y a que responda
-// por HTTP (cualquier código que no sea un error del servidor).
-func (in *Installer) waitHealthy(listen string) error {
-	url := "http://" + localAddr(listen) + "/"
+// (cualquier código que no sea un error del servidor). La dirección se toma
+// del log de arranque; si aún no aparece, de las opciones o del valor por
+// defecto.
+func (in *Installer) waitHealthy(listenOverride string, since time.Time) (endpoint, error) {
+	fallback := endpoint{listen: listenOverride, scheme: "http"}
+	if fallback.listen == "" {
+		fallback.listen = ":9077"
+	}
 	deadline := time.Now().Add(in.HealthTimeout)
 	var last error
 	for {
+		ep := fallback
 		if in.isActive() {
-			code, err := in.Sys.HTTPStatus(url)
+			if found, ok := startedEndpoint(in.journal(since)); ok {
+				ep = found
+			}
+			code, err := in.Sys.HTTPStatus(ep.localURL())
 			if err == nil && code < 500 {
-				return nil
+				return ep, nil
 			}
 			if err != nil {
 				last = err
@@ -459,10 +508,10 @@ func (in *Installer) waitHealthy(listen string) error {
 				last = fmt.Errorf("HTTP %d", code)
 			}
 		} else {
-			last = errors.New("systemd no da el servicio por activo")
+			last = errors.New("systemd does not report the service as active")
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("no responde tras %s: %v", in.HealthTimeout, last)
+			return ep, fmt.Errorf("no response after %s: %v", in.HealthTimeout, last)
 		}
 		in.Sys.Sleep(time.Second)
 	}
@@ -472,11 +521,11 @@ func (in *Installer) waitHealthy(listen string) error {
 // alcanzable desde el propio equipo.
 func localAddr(listen string) string {
 	if listen == "" {
-		listen = ":8091"
+		listen = ":9077"
 	}
 	host, port, err := net.SplitHostPort(listen)
 	if err != nil {
-		return "127.0.0.1:8091"
+		return "127.0.0.1:9077"
 	}
 	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
 		if ip != nil && ip.To4() == nil {
@@ -488,16 +537,12 @@ func localAddr(listen string) string {
 	return net.JoinHostPort(host, port)
 }
 
-var setupLogRe = regexp.MustCompile(`token=([A-Z2-7]{4}(?:-[A-Z2-7]{4}){3})`)
-var urlLogRe = regexp.MustCompile(`url="?([^"\n]+)"?`)
-
 // printSetupHint muestra cómo hacer la configuración inicial, leyendo el
 // token del log del servicio.
-func (in *Installer) printSetupHint(listen string, since time.Time) {
+func (in *Installer) printSetupHint(ep endpoint, since time.Time) {
 	var out string
 	for i := 0; i < 10; i++ {
-		out, _ = in.Sys.Run("journalctl", "-u", ServiceName+".service", "-o", "cat", "--no-pager",
-			"--since", "@"+strconv.FormatInt(since.Add(-5*time.Second).Unix(), 10))
+		out = in.journal(since)
 		if setupLogRe.MatchString(out) {
 			break
 		}
@@ -505,9 +550,9 @@ func (in *Installer) printSetupHint(listen string, since time.Time) {
 	}
 	m := setupLogRe.FindStringSubmatch(out)
 	if m == nil {
-		_, port, _ := net.SplitHostPort(localAddr(listen))
-		in.say("  Abre http://<ip-del-equipo>:%s/ en el navegador.", port)
-		in.say("  Si es la primera vez, el token de configuración está en: journalctl -u %s | grep token", ServiceName)
+		_, port, _ := net.SplitHostPort(localAddr(ep.listen))
+		in.say("  Open %s://<machine-ip>:%s/ in your browser.", ep.scheme, port)
+		in.say("  On first use, the setup token is in: journalctl -u %s | grep token", ServiceName)
 		return
 	}
 	urls := ""
@@ -519,11 +564,11 @@ func (in *Installer) printSetupHint(listen string, since time.Time) {
 		}
 	}
 	in.say("")
-	in.say("  Configuración inicial:")
+	in.say("  Initial setup:")
 	if urls != "" {
-		in.say("    Abre en el navegador: %s", urls)
+		in.say("    Open in your browser: %s", urls)
 	}
-	in.say("    Token de configuración: %s", m[1])
+	in.say("    Setup token: %s", m[1])
 }
 
 // Uninstall detiene y elimina el servicio, la unit, el binario, las opciones
@@ -532,9 +577,9 @@ func (in *Installer) Uninstall(purge bool) error {
 	if err := in.preflight(false); err != nil {
 		return err
 	}
-	in.say("Desinstalando Qaphi")
+	in.say("Uninstalling Qaphi")
 	if _, err := os.Stat(in.path(UnitPath)); err == nil {
-		in.say("· Deteniendo y deshabilitando el servicio…")
+		in.say("- Stopping and disabling the service...")
 		_ = in.systemctl("disable", "--now", ServiceName)
 		if err := os.Remove(in.path(UnitPath)); err != nil {
 			return err
@@ -549,21 +594,21 @@ func (in *Installer) Uninstall(purge bool) error {
 	_ = os.Remove(in.path(EnvDir)) // solo si está vacío
 	if _, _, ok, _ := in.Sys.LookupUser(UserName); ok {
 		if _, err := in.Sys.LookPath("userdel"); err == nil {
-			in.say("· Eliminando el usuario %s…", UserName)
+			in.say("- Removing user %s...", UserName)
 			if _, err := in.Sys.Run("userdel", UserName); err != nil {
-				in.say("  ! no se pudo eliminar el usuario: %v", err)
+				in.say("  ! could not remove the user: %v", err)
 			}
 		}
 	}
 	if purge {
-		in.say("· Borrando los datos de %s…", DataDir)
+		in.say("- Deleting the data in %s...", DataDir)
 		if err := os.RemoveAll(in.path(DataDir)); err != nil {
 			return err
 		}
-		in.say("✓ Qaphi desinstalado y datos borrados.")
+		in.say("OK: Qaphi uninstalled and data deleted.")
 		return nil
 	}
-	in.say("✓ Qaphi desinstalado. Los datos se conservan en %s (bórralos con «qaphi uninstall --purge»).", DataDir)
+	in.say("OK: Qaphi uninstalled. The data is kept in %s (delete it with 'qaphi uninstall --purge').", DataDir)
 	return nil
 }
 
@@ -600,9 +645,10 @@ func formatEnv(env map[string]string) string {
 	}
 	sort.Strings(keys)
 	var b strings.Builder
-	b.WriteString("# Opciones de arranque de Qaphi, generadas por «qaphi install».\n")
-	b.WriteString("# No hace falta editarlo: para cambiar una opción, vuelve a ejecutar\n")
-	b.WriteString("# «sudo qaphi install --opción=valor».\n")
+	b.WriteString("# Qaphi startup options, generated by 'qaphi install'. Do not edit:\n")
+	b.WriteString("# run 'sudo qaphi install --option=value' again instead.\n")
+	b.WriteString("# QAPHI_LISTEN is an emergency override of the web network settings;\n")
+	b.WriteString("# remove it with 'sudo qaphi install --listen='.\n")
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s=%s\n", k, strconv.Quote(env[k]))
 	}

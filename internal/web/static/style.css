@@ -1,40 +1,6 @@
 /* Qaphi — hoja de estilos.
-   El aspecto se define con variables CSS: un tema es un conjunto de valores
-   para estas variables. */
-:root {
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --text: #1c2230;
-  --muted: #5b6475;
-  --border: #dde1e8;
-  --accent: #2f6fde;
-  --accent-text: #ffffff;
-  --danger: #c63b3b;
-
-  --status-up: #2e9e5b;
-  --status-slow: #d99a1e;
-  --status-down: #d64545;
-  --status-unknown: #8a93a3;
-  --status-paused: #7a6fd0;
-
-  --radius: 8px;
-  --space: 1rem;
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12151b;
-    --surface: #1b2029;
-    --text: #e4e8ef;
-    --muted: #9aa3b2;
-    --border: #2c3340;
-    --accent: #6d9df0;
-    --accent-text: #0d1117;
-    --danger: #ef6b6b;
-  }
-}
+   Solo usa variables CSS: los colores, radios y tipografías los define el
+   tema activo (/theme/<id>.css), que se carga antes que este fichero. */
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -93,8 +59,9 @@ form.inline { display: inline; margin: 0; }
   border-radius: var(--radius);
   padding: var(--space) calc(var(--space) * 1.25);
   margin-bottom: var(--space);
-  color: #fff;
+  color: var(--banner-text);
   background: var(--status-unknown);
+  transition: background-color .4s ease;
 }
 .banner h1 { margin: 0; font-size: 1.1rem; font-weight: 600; opacity: .9; }
 .banner .summary { margin: .25rem 0 0; font-size: 1.6rem; font-weight: 700; }
@@ -108,7 +75,7 @@ form.inline { display: inline; margin: 0; }
   border-radius: 999px;
   font-size: .8rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--banner-text);
   background: var(--status-unknown);
   white-space: nowrap;
 }
@@ -190,8 +157,27 @@ button, .button {
   cursor: pointer;
 }
 button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+button.danger { background: var(--danger); border-color: var(--danger); color: var(--banner-text); }
 button.link { border: 0; background: none; padding: 0; color: var(--muted); }
 
 .types { list-style: none; padding: 0; display: grid; gap: var(--space); grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 .types p { margin: .3rem 0 0; }
+
+h2 { font-size: 1.1rem; margin: 0 0 calc(var(--space) * .75); }
+.notice { border-color: var(--status-slow); }
+.cert-info { font-family: var(--mono); font-size: .8rem; word-break: break-all; }
+.field fieldset, fieldset.field { border: 0; padding: 0; }
+.field label.check { display: block; margin: .2rem 0; }
+
+/* Selector de idioma de /setup */
+.lang-switch { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: flex-end; font-size: .85rem; margin-bottom: .5rem; }
+.lang-switch a { color: var(--muted); text-decoration: none; }
+.lang-switch a[aria-current] { color: var(--text); font-weight: 600; }
+
+/* Resaltado breve de un valor que cambia en vivo */
+@keyframes qaphi-changed { from { background: color-mix(in srgb, var(--accent) 25%, transparent); } to { background: transparent; } }
+.changed { animation: qaphi-changed 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .changed { animation: none; }
+  .banner { transition: none; }
+}

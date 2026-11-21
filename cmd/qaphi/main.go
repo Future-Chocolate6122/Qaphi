@@ -58,31 +58,31 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		usage(stdout)
 		return exitOK
 	default:
-		fmt.Fprintf(stderr, "qaphi: subcomando desconocido %q\n\n", cmd)
+		fmt.Fprintf(stderr, "qaphi: unknown subcommand %q\n\n", cmd)
 		usage(stderr)
 		return exitUsage
 	}
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `Qaphi — monitor de servicios
+	fmt.Fprint(w, `Qaphi - service monitor
 
-Uso:
-  qaphi [serve] [opciones]    arranca el servidor (por defecto)
-  qaphi install [opciones]    instala o actualiza Qaphi como servicio de systemd
-  qaphi uninstall [--purge]   desinstala; conserva los datos salvo con --purge
-  qaphi reset-password        restablece la contraseña de admin
-  qaphi version [--short]     muestra la versión
-  qaphi help                  muestra esta ayuda
+Usage:
+  qaphi [serve] [options]     start the server (default)
+  qaphi install [options]     install or update Qaphi as a systemd service
+  qaphi uninstall [--purge]   uninstall; keeps the data unless --purge is given
+  qaphi reset-password        reset the admin password
+  qaphi version [--short]     print the version
+  qaphi help                  print this help
 
-Ejecuta «qaphi <subcomando> -h» para ver sus opciones.
+Run 'qaphi <subcommand> -h' to see its options.
 `)
 }
 
 func versionCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("version", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	short := fs.Bool("short", false, "solo el número de versión")
+	short := fs.Bool("short", false, "print only the version number")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -100,7 +100,7 @@ func serve(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "qaphi: configuración no válida:\n%v\n", err)
+		fmt.Fprintf(stderr, "qaphi: invalid configuration:\n%v\n", err)
 		return exitUsage
 	}
 	log := logging.New(stdout, logging.Options{
@@ -112,7 +112,7 @@ func serve(args []string, stdout, stderr io.Writer) int {
 	// Instancia única en todo el sistema.
 	lock, err := instance.Acquire(instance.DefaultName)
 	if err != nil {
-		log.Error("no se puede arrancar", "error", err)
+		log.Error("cannot start", "error", err)
 		return exitError
 	}
 	defer lock.Release()
@@ -129,7 +129,7 @@ func serve(args []string, stdout, stderr io.Writer) int {
 		select {
 		case <-sigCtx.Done():
 			stop()
-			log.Info("señal recibida: parada ordenada en curso (repite la señal para forzar la salida)")
+			log.Info("signal received: graceful shutdown in progress (send it again to force exit)")
 			cancel()
 		case <-ctx.Done():
 		}
@@ -137,18 +137,18 @@ func serve(args []string, stdout, stderr io.Writer) int {
 
 	a, err := app.New(ctx, cfg, log)
 	if err != nil {
-		log.Error("no se pudo arrancar", "error", err)
+		log.Error("startup failed", "error", err)
 		return exitError
 	}
 	runErr := a.Run(ctx)
 	if err := a.Close(); err != nil {
-		log.Error("error en la parada", "error", err)
+		log.Error("error during shutdown", "error", err)
 		return exitError
 	}
 	if runErr != nil {
-		log.Error("el servidor terminó con error", "error", runErr)
+		log.Error("server stopped with an error", "error", runErr)
 		return exitError
 	}
-	log.Info("qaphi detenido")
+	log.Info("qaphi stopped")
 	return exitOK
 }

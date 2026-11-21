@@ -12,6 +12,7 @@ import (
 	"github.com/future-chocolate6122/qaphi/internal/checks"
 	"github.com/future-chocolate6122/qaphi/internal/model"
 	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 	"github.com/future-chocolate6122/qaphi/internal/state"
 )
 
@@ -207,7 +208,7 @@ func TestPanicoRecuperado(t *testing.T) {
 	s, rec, _, _, _ := newTest(t, 0, &fakeChecker{fn: func(context.Context) checks.Result { panic("¡bum!") }})
 	s.Load([]model.Check{check(1, 20*time.Millisecond)})
 	eventually(t, "resultado tras el pánico", func() bool { return len(rec.results(1)) >= 2 })
-	if r := rec.results(1)[0]; r.OK || r.Message != MsgPanic {
+	if r := rec.results(1)[0]; r.OK || msg.Decode(r.Message).Key != checks.MsgPanic {
 		t.Fatalf("resultado = %+v", r)
 	}
 }
@@ -222,7 +223,7 @@ func TestCheckQueIgnoraElContexto(t *testing.T) {
 	s, rec, _, _, _ := newTest(t, 0, f, 20*time.Millisecond)
 	s.Load([]model.Check{check(1, 10*time.Millisecond)})
 	eventually(t, "se abandona y se registra fallo", func() bool { return len(rec.results(1)) >= 2 })
-	if r := rec.results(1)[0]; r.OK || r.Message != MsgTimeout {
+	if r := rec.results(1)[0]; r.OK || msg.Decode(r.Message).Key != checks.MsgTimeout {
 		t.Fatalf("resultado = %+v", r)
 	}
 }

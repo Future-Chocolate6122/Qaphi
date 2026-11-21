@@ -13,10 +13,10 @@ import (
 )
 
 // ErrNotFound indica que el elemento pedido no existe.
-var ErrNotFound = errors.New("no encontrado")
+var ErrNotFound = errors.New("not found")
 
 // ErrLocked indica que la base de datos está en uso por otro proceso.
-var ErrLocked = errors.New("la base de datos está en uso por otro proceso (¿hay otra instancia de qaphi en marcha?)")
+var ErrLocked = errors.New("the database is in use by another process (is another qaphi instance running?)")
 
 // Store es el acceso a datos persistentes. Todas las escrituras de
 // configuración son inmediatas; los resultados llegan en lotes.

@@ -10,14 +10,29 @@ import (
 )
 
 type authForm struct {
-	Error string
-	Next  string
+	Error     string
+	Next      string
+	Languages []msg.Language // selector de idioma (solo en /setup)
 }
 
+func (s *Server) setupData(w http.ResponseWriter, r *http.Request, errText string) pageData {
+	return pageData{
+		Title: s.T(r, "setup.title"), CSRF: s.anonCSRF(w, r),
+		Body: authForm{Error: errText, Languages: msg.Languages()},
+	}
+}
+
+// handleSetupForm muestra /setup. Con ?lang=xx cambia el idioma de la página
+// (se guarda en una cookie hasta que el setup lo fija como ajuste global).
 func (s *Server) handleSetupForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, http.StatusOK, "setup", pageData{
-		Title: msg.T("setup.title"), CSRF: s.anonCSRF(w, r), Body: authForm{},
-	})
+	if q := r.URL.Query().Get("lang"); q != "" {
+		if l, ok := msg.Parse(q); ok {
+			s.setCookie(w, r, langCookie, string(l), 0)
+		}
+		redirect(w, r, "/setup")
+		return
+	}
+	s.render(w, r, http.StatusOK, "setup", s.setupData(w, r, ""))
 }
 
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
@@ -28,10 +43,9 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusForbidden, "http.forbidden")
 		return
 	}
+	l := s.lang(r)
 	fail := func(status int, key string, args ...any) {
-		s.render(w, r, status, "setup", pageData{
-			Title: msg.T("setup.title"), CSRF: s.anonCSRF(w, r), Body: authForm{Error: msg.F(key, args...)},
-		})
+		s.render(w, r, status, "setup", s.setupData(w, r, msg.F(l, key, args...)))
 	}
 	key := "setup|" + clientKey(r)
 	if ok, wait := s.Limiter.Allow(key); !ok {
@@ -40,7 +54,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.SetupToken == nil || !s.SetupToken.Check(r.PostFormValue("token")) {
 		s.Limiter.Failure(key)
-		s.Log.Warn("token de configuración incorrecto", "remoto", r.RemoteAddr)
+		s.Log.Warn("wrong setup token", "remote", r.RemoteAddr)
 		fail(http.StatusUnauthorized, "setup.err.token")
 		return
 	}
@@ -49,13 +63,18 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, e)
 		return
 	}
+	if err := s.Settings.SetLanguage(r.Context(), l); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
 	if err := s.Admin.SetPassword(r.Context(), pw); err != nil {
 		s.internalError(w, r, err)
 		return
 	}
 	s.SetupToken.Invalidate()
 	s.Limiter.Success(key)
-	s.Log.Info("contraseña de admin configurada desde /setup", "remoto", r.RemoteAddr)
+	s.setCookie(w, r, langCookie, "", -1)
+	s.Log.Info("admin password set from /setup", "remote", r.RemoteAddr, "language", string(l))
 	if !s.startSession(w, r) {
 		return
 	}
@@ -69,7 +88,7 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, http.StatusOK, "login", pageData{
-		Title: msg.T("login.title"), CSRF: s.anonCSRF(w, r), Body: authForm{Next: next},
+		Title: s.T(r, "login.title"), CSRF: s.anonCSRF(w, r), Body: authForm{Next: next},
 	})
 }
 
@@ -82,9 +101,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := safeNext(r.PostFormValue("next"))
+	l := s.lang(r)
 	fail := func(status int, key string, args ...any) {
 		s.render(w, r, status, "login", pageData{
-			Title: msg.T("login.title"), CSRF: s.anonCSRF(w, r), Body: authForm{Error: msg.F(key, args...), Next: next},
+			Title: msg.T(l, "login.title"), CSRF: s.anonCSRF(w, r), Body: authForm{Error: msg.F(l, key, args...), Next: next},
 		})
 	}
 	key := "login|" + clientKey(r)
@@ -99,7 +119,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		s.Limiter.Failure(key)
-		s.Log.Warn("inicio de sesión fallido", "remoto", r.RemoteAddr)
+		s.Log.Warn("failed login", "remote", r.RemoteAddr)
 		fail(http.StatusUnauthorized, "login.err")
 		return
 	}
@@ -107,14 +127,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !s.startSession(w, r) {
 		return
 	}
-	s.Log.Info("sesión iniciada", "remoto", r.RemoteAddr)
+	s.Log.Info("login", "remote", r.RemoteAddr)
 	redirect(w, r, next)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		if err := s.Sessions.Destroy(r.Context(), c.Value); err != nil {
-			s.Log.Error("no se pudo cerrar la sesión", "error", err)
+			s.Log.Error("could not close the session", "error", err)
 		}
 	}
 	s.setCookie(w, r, sessionCookie, "", -1)

@@ -30,7 +30,7 @@ var migrationName = regexp.MustCompile(`^(\d{4})_[a-z0-9_]+\.sql$`)
 func loadMigrations(fsys fs.FS) ([]migration, error) {
 	entries, err := fs.ReadDir(fsys, "migrations")
 	if err != nil {
-		return nil, fmt.Errorf("leer migraciones: %w", err)
+		return nil, fmt.Errorf("read migrations: %w", err)
 	}
 	var ms []migration
 	for _, e := range entries {
@@ -39,19 +39,19 @@ func loadMigrations(fsys fs.FS) ([]migration, error) {
 		}
 		m := migrationName.FindStringSubmatch(e.Name())
 		if m == nil {
-			return nil, fmt.Errorf("nombre de migración no válido %q (formato NNNN_descripcion.sql)", e.Name())
+			return nil, fmt.Errorf("invalid migration name %q (expected NNNN_description.sql)", e.Name())
 		}
 		v, _ := strconv.ParseInt(m[1], 10, 64)
 		body, err := fs.ReadFile(fsys, path.Join("migrations", e.Name()))
 		if err != nil {
-			return nil, fmt.Errorf("leer migración %s: %w", e.Name(), err)
+			return nil, fmt.Errorf("read migration %s: %w", e.Name(), err)
 		}
 		ms = append(ms, migration{version: v, name: e.Name(), sql: string(body)})
 	}
 	sort.Slice(ms, func(i, j int) bool { return ms[i].version < ms[j].version })
 	for i, m := range ms {
 		if m.version != int64(i+1) {
-			return nil, fmt.Errorf("migraciones no consecutivas: se esperaba la %04d y se encontró %s", i+1, m.name)
+			return nil, fmt.Errorf("non-consecutive migrations: expected %04d, found %s", i+1, m.name)
 		}
 	}
 	return ms, nil
@@ -69,14 +69,14 @@ func migrate(ctx context.Context, db *sql.DB, fsys fs.FS) (applied int, err erro
 		version    INTEGER NOT NULL PRIMARY KEY,
 		applied_at INTEGER NOT NULL
 	) STRICT`); err != nil {
-		return 0, fmt.Errorf("crear schema_migrations: %w", err)
+		return 0, fmt.Errorf("create schema_migrations: %w", err)
 	}
 	current, err := schemaVersion(ctx, db)
 	if err != nil {
 		return 0, err
 	}
 	if latest := int64(len(ms)); current > latest {
-		return 0, fmt.Errorf("la base de datos tiene el esquema %d, pero este binario solo conoce hasta el %d: ¿se creó con una versión más reciente de qaphi?", current, latest)
+		return 0, fmt.Errorf("the database has schema version %d but this binary only knows up to %d: was it created by a newer qaphi version?", current, latest)
 	}
 	for _, m := range ms {
 		if m.version <= current {
@@ -93,18 +93,18 @@ func migrate(ctx context.Context, db *sql.DB, fsys fs.FS) (applied int, err erro
 func applyMigration(ctx context.Context, db *sql.DB, m migration) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("migración %s: %w", m.name, err)
+		return fmt.Errorf("migration %s: %w", m.name, err)
 	}
 	defer tx.Rollback() // sin efecto si ya se confirmó
 	if _, err := tx.ExecContext(ctx, m.sql); err != nil {
-		return fmt.Errorf("migración %s: %w", m.name, err)
+		return fmt.Errorf("migration %s: %w", m.name, err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
 		m.version, time.Now().Unix()); err != nil {
-		return fmt.Errorf("migración %s: registrar versión: %w", m.name, err)
+		return fmt.Errorf("migration %s: record version: %w", m.name, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("migración %s: confirmar: %w", m.name, err)
+		return fmt.Errorf("migration %s: commit: %w", m.name, err)
 	}
 	return nil
 }
@@ -112,7 +112,7 @@ func applyMigration(ctx context.Context, db *sql.DB, m migration) error {
 func schemaVersion(ctx context.Context, db *sql.DB) (int64, error) {
 	var v sql.NullInt64
 	if err := db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&v); err != nil {
-		return 0, fmt.Errorf("leer versión de esquema: %w", err)
+		return 0, fmt.Errorf("read schema version: %w", err)
 	}
 	return v.Int64, nil
 }

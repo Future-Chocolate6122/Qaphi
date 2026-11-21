@@ -1,5 +1,8 @@
 {{define "content"}}
 <section class="card narrow">
+  <nav class="lang-switch" aria-label="{{t "setup.language"}}">
+    {{range .Body.Languages}}<a href="/setup?lang={{.Code}}"{{if eq .Code $.Lang}} aria-current="true"{{end}} lang="{{.Code}}">{{.Name}}</a>{{end}}
+  </nav>
   <h1>{{t "setup.title"}}</h1>
   <p class="muted">{{t "setup.intro"}}</p>
   {{with .Body.Error}}<p class="alert" role="alert">{{.}}</p>{{end}}

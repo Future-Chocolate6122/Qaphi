@@ -17,8 +17,8 @@ var lineBreaks = strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ")
 // la base de datos y se exportan.
 type Values map[string]string
 
-// Errors asocia la clave de un campo con un mensaje de error para el usuario.
-type Errors map[string]string
+// Errors asocia la clave de un campo con un mensaje de error traducible.
+type Errors map[string]msg.Msg
 
 func (e Errors) Error() string {
 	keys := make([]string, 0, len(e))
@@ -31,7 +31,7 @@ func (e Errors) Error() string {
 		if i > 0 {
 			sb.WriteString("; ")
 		}
-		sb.WriteString(k + ": " + e[k])
+		sb.WriteString(k + ": " + e[k].String())
 	}
 	return sb.String()
 }
@@ -60,14 +60,14 @@ func (info Info) Normalize(in Values) (Values, Errors) {
 		}
 		if raw == "" {
 			if f.Required {
-				errs[f.Key] = msg.T("field.required")
+				errs[f.Key] = msg.New("field.required")
 			} else {
 				out[f.Key] = ""
 			}
 			continue
 		}
 		v, e := f.normalize(raw)
-		if e != "" {
+		if !e.IsZero() {
 			errs[f.Key] = e
 			continue
 		}
@@ -81,71 +81,72 @@ func (info Info) Normalize(in Values) (Values, Errors) {
 
 // normalize valida un valor no vacío y lo devuelve en forma canónica, o un
 // mensaje de error para el usuario.
-func (f Field) normalize(raw string) (string, string) {
+func (f Field) normalize(raw string) (string, msg.Msg) {
+	var ok msg.Msg // mensaje vacío: sin error
 	switch f.Type {
 	case Text, Secret:
 		if f.Type == Text {
 			raw = lineBreaks.Replace(raw) // un campo de una línea no admite saltos
 		}
 		if n := f.maxLen(); utf8.RuneCountInString(raw) > n {
-			return "", msg.F("field.too_long", n)
+			return "", msg.New("field.too_long", n)
 		}
-		return raw, ""
+		return raw, ok
 	case TextArea:
 		raw = strings.ReplaceAll(raw, "\r\n", "\n")
 		if n := f.maxLen(); utf8.RuneCountInString(raw) > n {
-			return "", msg.F("field.too_long", n)
+			return "", msg.New("field.too_long", n)
 		}
-		return raw, ""
+		return raw, ok
 	case Int:
 		n, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
-			return "", msg.T("field.int")
+			return "", msg.New("field.int")
 		}
 		if f.Min != "" {
 			if lo, _ := strconv.ParseInt(f.Min, 10, 64); n < lo {
-				return "", msg.F("field.int_min", f.Min)
+				return "", msg.New("field.min", f.Min)
 			}
 		}
 		if f.Max != "" {
 			if hi, _ := strconv.ParseInt(f.Max, 10, 64); n > hi {
-				return "", msg.F("field.int_max", f.Max)
+				return "", msg.New("field.max", f.Max)
 			}
 		}
-		return strconv.FormatInt(n, 10), ""
+		return strconv.FormatInt(n, 10), ok
 	case Duration:
 		d, err := time.ParseDuration(raw)
 		if err != nil || d <= 0 {
-			return "", msg.T("field.duration")
+			return "", msg.New("field.duration")
 		}
 		if f.Min != "" {
 			if lo, _ := time.ParseDuration(f.Min); d < lo {
-				return "", msg.F("field.duration_min", f.Min)
+				return "", msg.New("field.min", f.Min)
 			}
 		}
 		if f.Max != "" {
 			if hi, _ := time.ParseDuration(f.Max); d > hi {
-				return "", msg.F("field.duration_max", f.Max)
+				return "", msg.New("field.max", f.Max)
 			}
 		}
-		return d.String(), ""
+		return d.String(), ok
 	case Bool:
 		switch strings.ToLower(raw) {
 		case "true", "on", "1", "yes", "si", "sí":
-			return "true", ""
+			return "true", ok
 		case "false", "off", "0", "no":
-			return "false", ""
+			return "false", ok
 		}
-		return "", msg.T("field.bool")
+		return "", msg.New("field.bool")
 	case Select:
 		for _, o := range f.Options {
 			if o.Value == raw {
-				return raw, ""
+				return raw, ok
 			}
 		}
-		return "", msg.T("field.select")
+		return "", msg.New("field.select")
 	}
-	return "", msg.T("field.select")
+	return "", msg.New("field.select")
 }
 
 func (f Field) maxLen() int {

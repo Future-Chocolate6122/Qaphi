@@ -51,8 +51,8 @@ func recoverPanics(log *slog.Logger) middleware {
 					if v == http.ErrAbortHandler { // aborto deliberado: lo gestiona net/http
 						panic(v)
 					}
-					log.Error("pánico en un handler HTTP", "ruta", r.URL.Path, "pánico", v, "pila", string(debug.Stack()))
-					http.Error(w, msg.T("http.internal"), http.StatusInternalServerError)
+					log.Error("panic in HTTP handler", "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
+					http.Error(w, msg.T(msg.Negotiate(r.Header.Get("Accept-Language")), "http.internal"), http.StatusInternalServerError)
 				}
 			}()
 			next.ServeHTTP(w, r)
@@ -94,9 +94,9 @@ func logRequests(log *slog.Logger) middleware {
 			start := time.Now()
 			rec := &statusRecorder{ResponseWriter: w}
 			next.ServeHTTP(rec, r)
-			log.Debug("petición HTTP",
-				"método", r.Method, "ruta", r.URL.Path, "estado", rec.status,
-				"duración", time.Since(start).Round(time.Microsecond), "remoto", r.RemoteAddr)
+			log.Debug("http request",
+				"method", r.Method, "path", r.URL.Path, "status", rec.status,
+				"duration", time.Since(start).Round(time.Microsecond), "remote", r.RemoteAddr)
 		})
 	}
 }
@@ -115,7 +115,7 @@ func limitBody(next http.Handler) http.Handler {
 }
 
 // setupGate: mientras no haya contraseña, todo lleva a /setup (salvo los
-// estáticos); una vez configurada, /setup deja de existir.
+// estáticos y la hoja del tema); una vez configurada, /setup deja de existir.
 func (s *Server) setupGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		isSetup := r.URL.Path == "/setup"
@@ -127,7 +127,7 @@ func (s *Server) setupGate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if isSetup || strings.HasPrefix(r.URL.Path, "/static/") {
+		if isSetup || strings.HasPrefix(r.URL.Path, "/static/") || strings.HasPrefix(r.URL.Path, "/theme/") {
 			next.ServeHTTP(w, r)
 			return
 		}

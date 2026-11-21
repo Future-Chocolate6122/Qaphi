@@ -1,7 +1,7 @@
 {{define "content"}}
-<section class="banner banner-{{.Body.Level}}">
+<section class="banner banner-{{.Body.Level}}" data-banner>
   <h1>{{t "home.title"}}</h1>
-  <p class="summary">{{.Body.Summary}}</p>
+  <p class="summary" data-summary>{{.Body.Summary}}</p>
 </section>
 {{if .Body.Rows}}
 <div class="table-wrap">
@@ -12,19 +12,19 @@
   </tr></thead>
   <tbody>
   {{range .Body.Rows}}
-    <tr>
+    <tr data-id="{{.ID}}">
       <td data-label="{{t "col.name"}}"><strong>{{.Name}}</strong>{{if .Target}}<br><small class="muted target">{{.Target}}</small>{{end}}</td>
       <td data-label="{{t "col.group"}}">{{.Group}}</td>
       <td data-label="{{t "col.status"}}">{{template "badge" .}}</td>
-      <td data-label="{{t "col.latency"}}" class="num">{{.Latency}}</td>
-      <td data-label="{{t "col.last"}}">{{.Last}}</td>
-      <td data-label="{{t "col.detail"}}" class="muted">{{.Message}}</td>
+      <td data-label="{{t "col.latency"}}" class="num" data-field="latency">{{.Latency}}</td>
+      <td data-label="{{t "col.last"}}" data-field="last" title="{{.LastTitle}}">{{.Last}}</td>
+      <td data-label="{{t "col.detail"}}" class="muted" data-field="message">{{.Message}}</td>
     </tr>
   {{end}}
   </tbody>
 </table>
 </div>
-<p class="muted small">{{t "home.recent"}}</p>
+<p class="muted small">{{t "home.live"}}</p>
 {{else}}
 <section class="card"><p>{{t "home.empty"}} <a href="/admin">{{t "home.empty.admin"}}</a></p></section>
 {{end}}

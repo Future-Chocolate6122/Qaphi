@@ -1,0 +1,77 @@
+{{define "content"}}
+<h1>{{t "settings.title"}}</h1>
+
+{{with .Body.Pending}}
+<section class="card notice">
+  <h2>{{t "settings.net.pending"}}</h2>
+  <p>{{tf "settings.net.pending.text" .Deadline}}</p>
+  <p><a class="button primary" href="{{.URL}}">{{t "settings.net.pending.open"}}</a> <code>{{.URL}}</code></p>
+  <form method="post" action="/admin/settings/network/cancel" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <button type="submit">{{t "settings.net.pending.cancel"}}</button>
+  </form>
+</section>
+{{end}}
+
+<form method="post" action="/admin/settings" class="card form">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>{{t "settings.general"}}</h2>
+  <div class="field">
+    <label for="f-language">{{t "settings.language"}}</label>
+    <select id="f-language" name="language">{{template "options" .Body.Languages}}</select>
+  </div>
+  <div class="field">
+    <label for="f-theme">{{t "settings.theme"}}</label>
+    <select id="f-theme" name="theme">{{template "options" .Body.Themes}}</select>
+  </div>
+  <div class="field">
+    <label for="f-timezone">{{t "settings.timezone"}}</label>
+    <select id="f-timezone" name="timezone">{{template "options" .Body.Zones}}</select>
+  </div>
+  <div class="buttons"><button type="submit" class="primary">{{t "form.save"}}</button></div>
+</form>
+
+{{if .Body.Net.Available}}
+<form method="post" action="/admin/settings/network" class="card form" id="network">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>{{t "settings.network"}}</h2>
+  <p class="muted">{{tf "settings.net.current" .Body.Net.Current}}</p>
+  {{if .Body.Net.Locked}}
+  <p class="alert">{{t "settings.net.locked"}}</p>
+  {{else}}
+  {{with .Body.NetError}}<p class="alert" role="alert">{{.}}</p>{{end}}
+  <div class="field">
+    <label for="f-bind">{{t "settings.net.bind"}}</label>
+    <select id="f-bind" name="bind">{{template "options" .Body.Net.Binds}}</select>
+  </div>
+  <div class="field">
+    <label for="f-port">{{t "settings.net.port"}}</label>
+    <input id="f-port" name="port" type="number" min="1024" max="65535" value="{{.Body.Net.Port}}" inputmode="numeric" required>
+    <small class="help">{{t "settings.net.port.help"}}</small>
+  </div>
+  <fieldset class="field">
+    <legend>{{t "settings.net.protocol"}}</legend>
+    <label class="check"><input type="radio" name="protocol" value="http"{{if not .Body.Net.TLS}} checked{{end}}> {{t "settings.net.http"}}</label>
+    <label class="check"><input type="radio" name="protocol" value="https"{{if .Body.Net.TLS}} checked{{end}}> {{t "settings.net.https"}}</label>
+    <small class="help">{{t "settings.net.https.help"}}</small>
+  </fieldset>
+  <p class="muted small">{{t "settings.net.confirm.help"}}</p>
+  <div class="buttons"><button type="submit" class="primary">{{t "settings.net.apply"}}</button></div>
+  {{end}}
+</form>
+
+<section class="card">
+  <h2>{{t "settings.cert"}}</h2>
+  {{if .Body.Cert.Has}}
+  <p class="muted cert-info">{{.Body.Cert.Info}}</p>
+  <form method="post" action="/admin/settings/cert" class="inline">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit">{{t "settings.cert.regen"}}</button>
+  </form>
+  <small class="help">{{t "settings.cert.regen.help"}}</small>
+  {{else}}
+  <p class="muted">{{t "settings.cert.none"}}</p>
+  {{end}}
+</section>
+{{end}}
+{{end}}

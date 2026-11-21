@@ -47,7 +47,7 @@ func loadStatic(fsys fs.FS, root string) (*staticFiles, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("cargar ficheros estáticos: %w", err)
+		return nil, fmt.Errorf("load static files: %w", err)
 	}
 	return sf, nil
 }
@@ -58,7 +58,7 @@ func loadStatic(fsys fs.FS, root string) (*staticFiles, error) {
 func (sf *staticFiles) url(name string) (string, error) {
 	f, ok := sf.files[name]
 	if !ok {
-		return "", fmt.Errorf("fichero estático inexistente: %s", name)
+		return "", fmt.Errorf("unknown static file: %s", name)
 	}
 	return "/static/" + name + "?v=" + f.etag, nil
 }

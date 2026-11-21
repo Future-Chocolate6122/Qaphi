@@ -24,6 +24,9 @@ type fakeSys struct {
 	// onStart se ejecuta al arrancar el servicio (p. ej. para simular una
 	// migración de la base de datos).
 	onStart func()
+	// startedLine es la línea de arranque que el servicio deja en el log.
+	startedLine string
+	urls        []string // URL comprobadas
 }
 
 func (f *fakeSys) binVersion() string {
@@ -77,8 +80,12 @@ func (f *fakeSys) Run(name string, args ...string) (string, error) {
 		f.userExists = false
 		return "", nil
 	case "journalctl":
-		return `level=INFO msg="qaphi en marcha"` + "\n" +
-			`level=WARN msg="configuración inicial pendiente" token=ABCD-EFGH-IJKL-MNOP url="http://192.168.1.5:8091/setup"`, nil
+		started := f.startedLine
+		if started == "" {
+			started = `level=INFO msg="qaphi started" version=v0.2.0 listen=0.0.0.0:9077 scheme=http`
+		}
+		return started + "\n" +
+			`level=WARN msg="initial setup pending" token=ABCD-EFGH-IJKL-MNOP url="http://192.168.1.5:9077/setup"`, nil
 	case filepath.Join(f.root, BinPath):
 		return f.binVersion(), nil
 	}
@@ -103,7 +110,8 @@ func (f *fakeSys) LookupUser(string) (int, int, bool, error) {
 
 func (f *fakeSys) Chown(string, int, int) error { return nil }
 
-func (f *fakeSys) HTTPStatus(string) (int, error) {
+func (f *fakeSys) HTTPStatus(u string) (int, error) {
+	f.urls = append(f.urls, u)
 	if f.active {
 		return 303, nil
 	}
@@ -192,7 +200,7 @@ func TestPreflight(t *testing.T) {
 			e.binary("v0.1.0")
 			tt.setup(e)
 			err := e.in.Install(Options{})
-			if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "no se ha cambiado nada") {
+			if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "nothing was changed") {
 				t.Fatalf("error = %v, se esperaba %q", err, tt.want)
 			}
 			for _, p := range []string{BinPath, UnitPath, EnvPath, DataDir} {
@@ -237,7 +245,7 @@ func TestInstalacionNueva(t *testing.T) {
 		t.Error("el servicio debería quedar activo y habilitado")
 	}
 	out := e.out.String()
-	for _, s := range []string{"instalado y en marcha", "ABCD-EFGH-IJKL-MNOP", "http://192.168.1.5:8091/setup"} {
+	for _, s := range []string{"installed and running", "ABCD-EFGH-IJKL-MNOP", "http://192.168.1.5:9077/setup"} {
 		if !strings.Contains(out, s) {
 			t.Errorf("la salida no contiene %q:\n%s", s, out)
 		}
@@ -248,7 +256,7 @@ func TestInstalacionNueva(t *testing.T) {
 	if err := e.in.Install(Options{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(e.out.String(), "al día") || e.sys.ran("systemctl stop qaphi") {
+	if !strings.Contains(e.out.String(), "up to date") || e.sys.ran("systemctl stop qaphi") {
 		t.Errorf("reinstalar lo mismo no debe tocar nada:\n%s\n%v", e.out, e.sys.cmds)
 	}
 }
@@ -293,7 +301,7 @@ func TestActualizacionConServicioActivo(t *testing.T) {
 	if !strings.Contains(e.read(EnvPath), `QAPHI_LISTEN=":9000"`) {
 		t.Errorf("se perdieron las opciones: %q", e.read(EnvPath))
 	}
-	if !strings.Contains(e.out.String(), "v0.1.0 → v0.2.0") || !strings.Contains(e.out.String(), "Datos conservados") {
+	if !strings.Contains(e.out.String(), "v0.1.0 -> v0.2.0") || !strings.Contains(e.out.String(), "Data preserved") {
 		t.Errorf("salida:\n%s", e.out)
 	}
 }
@@ -308,7 +316,7 @@ func TestActualizacionConServicioDetenido(t *testing.T) {
 	if e.sys.active || e.sys.ran("systemctl start qaphi") {
 		t.Error("un servicio detenido no debe arrancarse")
 	}
-	if !strings.Contains(e.out.String(), "sigue detenido") {
+	if !strings.Contains(e.out.String(), "remains stopped") {
 		t.Errorf("salida:\n%s", e.out)
 	}
 }
@@ -349,7 +357,7 @@ func TestCompilacionDev(t *testing.T) {
 	if err := e.in.Install(Options{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(e.out.String(), "no es una versión publicada") {
+	if !strings.Contains(e.out.String(), "not a released version") {
 		t.Errorf("falta el aviso de compilación sin etiqueta:\n%s", e.out)
 	}
 }
@@ -371,7 +379,7 @@ func TestCambiarOpciones(t *testing.T) {
 	// Una opción no válida no cambia nada.
 	e.binary("v0.1.0")
 	err := e.in.Install(Options{Env: map[string]string{"QAPHI_LISTEN": "no-vale"}})
-	if err == nil || !strings.Contains(err.Error(), "no se ha cambiado nada") {
+	if err == nil || !strings.Contains(err.Error(), "nothing was changed") {
 		t.Fatalf("error = %v", err)
 	}
 	if !strings.Contains(e.read(EnvPath), `":9100"`) || len(e.sys.cmds) > 3 {
@@ -390,7 +398,7 @@ func TestVueltaAtras(t *testing.T) {
 	}
 	e.binary("v0.2.0-roto")
 	err := e.in.Install(Options{})
-	if err == nil || !strings.Contains(err.Error(), "restaurado la versión anterior") {
+	if err == nil || !strings.Contains(err.Error(), "previous version was restored") {
 		t.Fatalf("error = %v\n%s", err, e.out)
 	}
 	if e.read(BinPath) != "BIN:v0.1.0" {
@@ -452,8 +460,8 @@ func TestUnitDeReferencia(t *testing.T) {
 
 func TestLocalAddr(t *testing.T) {
 	for in, want := range map[string]string{
-		"": "127.0.0.1:8091", ":9000": "127.0.0.1:9000", "0.0.0.0:80": "127.0.0.1:80",
-		"[::]:8091": "[::1]:8091", "192.168.1.5:8091": "192.168.1.5:8091", "basura": "127.0.0.1:8091",
+		"": "127.0.0.1:9077", ":9000": "127.0.0.1:9000", "0.0.0.0:80": "127.0.0.1:80",
+		"[::]:8091": "[::1]:8091", "192.168.1.5:8091": "192.168.1.5:8091", "basura": "127.0.0.1:9077",
 	} {
 		if got := localAddr(in); got != want {
 			t.Errorf("localAddr(%q) = %q, se esperaba %q", in, got, want)
@@ -471,5 +479,48 @@ func TestEnvIdaYVuelta(t *testing.T) {
 	}
 	if len(got) != len(in) {
 		t.Errorf("claves de más: %v", got)
+	}
+}
+
+func TestQuitarAnulacionDeListen(t *testing.T) {
+	e := installed(t, "v0.1.0") // instalado con --listen :9000
+	e.binary("v0.1.0")
+	if err := e.in.Install(Options{Env: map[string]string{"QAPHI_LISTEN": ""}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(e.read(EnvPath), "QAPHI_LISTEN=") {
+		t.Errorf("--listen= debe quitar la anulación: %q", e.read(EnvPath))
+	}
+}
+
+func TestComprobacionUsaElLogDeArranque(t *testing.T) {
+	e := installed(t, "v0.1.0")
+	// La red se cambió desde la web a HTTPS en otro puerto.
+	e.sys.startedLine = `msg="qaphi started" version=v0.2.0 listen=192.168.1.5:9443 scheme=https`
+	e.binary("v0.2.0")
+	if err := e.in.Install(Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if last := e.sys.urls[len(e.sys.urls)-1]; last != "https://192.168.1.5:9443/" {
+		t.Errorf("URL comprobada = %q", last)
+	}
+	if !strings.Contains(e.out.String(), "https://192.168.1.5:9443") {
+		t.Errorf("salida:\n%s", e.out)
+	}
+}
+
+func TestStartedEndpoint(t *testing.T) {
+	tests := map[string]endpoint{
+		`level=INFO msg="qaphi started" version=v0.2.0 listen=:9077 scheme=http`:                                             {":9077", "http"},
+		`msg="qaphi started" listen=[::]:9077 scheme=https` + "\n" + `msg="qaphi started" listen=127.0.0.1:9100 scheme=http`: {"127.0.0.1:9100", "http"},
+	}
+	for in, want := range tests {
+		got, ok := startedEndpoint(in)
+		if !ok || got != want {
+			t.Errorf("startedEndpoint(%q) = %+v, %v", in, got, ok)
+		}
+	}
+	if _, ok := startedEndpoint("nada"); ok {
+		t.Error("sin línea de arranque no debe encontrarse nada")
 	}
 }

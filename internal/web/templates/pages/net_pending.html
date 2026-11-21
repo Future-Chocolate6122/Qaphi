@@ -1,0 +1,15 @@
+{{define "content"}}
+<section class="card narrow notice">
+  <h1>{{t "settings.net.pending"}}</h1>
+  <p>{{tf "settings.net.pending.text" .Body.Deadline}}</p>
+  {{if .Body.InPlace}}<p class="muted">{{t "settings.net.pending.inplace"}}</p>{{end}}
+  <p><a class="button primary" href="{{.Body.URL}}">{{t "settings.net.pending.open"}}</a></p>
+  <p><code>{{.Body.URL}}</code></p>
+  {{if not .Body.InPlace}}
+  <form method="post" action="/admin/settings/network/cancel">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit">{{t "settings.net.pending.cancel"}}</button>
+  </form>
+  {{end}}
+</section>
+{{end}}

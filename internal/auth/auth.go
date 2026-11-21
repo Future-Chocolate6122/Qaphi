@@ -43,7 +43,7 @@ const (
 )
 
 // ErrNoSession indica que no hay sesión válida.
-var ErrNoSession = errors.New("sesión no válida o caducada")
+var ErrNoSession = errors.New("invalid or expired session")
 
 // ValidatePassword comprueba una contraseña nueva y su confirmación. Devuelve
 // la clave del mensaje de error o "" si es válida.
@@ -98,11 +98,11 @@ func (a *Admin) SetPassword(ctx context.Context, pw string) error {
 // versión sin estado, usada también por reset-password.
 func SetPassword(ctx context.Context, st store.Store, pw string) error {
 	if len(pw) > MaxPasswordBytes {
-		return errors.New("contraseña demasiado larga")
+		return errors.New("password too long")
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcryptCost)
 	if err != nil {
-		return fmt.Errorf("calcular hash: %w", err)
+		return fmt.Errorf("hash password: %w", err)
 	}
 	if err := st.SetSetting(ctx, SettingPasswordHash, string(h)); err != nil {
 		return err

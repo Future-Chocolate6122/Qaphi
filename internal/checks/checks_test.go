@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/future-chocolate6122/qaphi/internal/module"
+	"github.com/future-chocolate6122/qaphi/internal/msg"
 )
 
 // params normaliza los valores con la declaración registrada del tipo.
@@ -87,7 +88,7 @@ func TestHTTP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c, p := params(t, "http", tt.in)
 			r := c.Check(context.Background(), p)
-			if r.OK != tt.wantOK || !strings.Contains(r.Message, tt.wantMsg) {
+			if r.OK != tt.wantOK || !strings.Contains(r.Message.In(msg.ES), tt.wantMsg) {
 				t.Fatalf("resultado = %+v, se esperaba ok=%v y %q", r, tt.wantOK, tt.wantMsg)
 			}
 			if r.OK && r.Latency <= 0 {
@@ -133,7 +134,7 @@ func TestHTTPValidate(t *testing.T) {
 		}
 		errs := e.Impl.Validate(v)
 		for _, k := range tt.errs {
-			if errs[k] == "" {
+			if errs[k].IsZero() {
 				t.Errorf("%v: falta error en %s (%v)", tt.in, k, errs)
 			}
 		}
@@ -176,7 +177,7 @@ func TestTCP(t *testing.T) {
 
 	host, cport, _ := net.SplitHostPort(closedAddr(t))
 	c, p = params(t, "tcp", module.Values{"host": host, "port": cport})
-	if r := c.Check(context.Background(), p); r.OK || r.Message != "conexión rechazada" {
+	if r := c.Check(context.Background(), p); r.OK || r.Message.In(msg.ES) != "conexión rechazada" {
 		t.Fatalf("puerto cerrado: %+v", r)
 	}
 

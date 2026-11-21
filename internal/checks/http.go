@@ -24,30 +24,52 @@ import (
 const maxBodyRead = 64 << 10
 
 func init() {
-	msg.Register(map[string]string{
-		"check.http.name":            "HTTP(S)",
-		"check.http.desc":            "Comprueba que una URL responde con el código esperado.",
-		"check.http.url":             "URL",
-		"check.http.url.help":        "Dirección completa, p. ej. https://ejemplo.org/salud",
-		"check.http.method":          "Método",
-		"check.http.method.get":      "GET",
-		"check.http.method.head":     "HEAD",
-		"check.http.status":          "Códigos esperados",
-		"check.http.status.help":     "Códigos o rangos separados por comas, p. ej. 200-299 o 200,301",
-		"check.http.timeout":         "Tiempo máximo",
-		"check.http.redirects":       "Seguir redirecciones",
-		"check.http.insecure":        "Ignorar certificados TLS no válidos",
-		"check.http.insecure.help":   "Solo para servicios internos con certificados autofirmados.",
-		"check.http.err.url":         "Debe ser una URL http:// o https:// con servidor.",
-		"check.http.err.status":      "Formato no válido. Ejemplos: 200, 200-299, 200,301.",
-		"check.http.msg.status":      "HTTP %d",
-		"check.http.msg.unexpected":  "HTTP %d (no esperado)",
-		"check.http.msg.timeout":     "tiempo agotado",
-		"check.http.msg.refused":     "conexión rechazada",
-		"check.http.msg.dns":         "nombre no resuelto",
-		"check.http.msg.tls":         "error TLS: %s",
-		"check.http.msg.unreachable": "red inaccesible",
-		"check.http.msg.error":       "error: %s",
+	msg.Register(map[string]msg.Text{
+		"check.http.name": msg.Tr("HTTP(S)", "HTTP(S)", "HTTP(S)", "HTTP(S)"),
+		"check.http.desc": msg.Tr(
+			"Comprueba que una URL responde con el código esperado.",
+			"Checks that a URL responds with the expected status code.",
+			"Prüft, ob eine URL mit dem erwarteten Statuscode antwortet.",
+			"Vérifie qu’une URL répond avec le code attendu."),
+		"check.http.url": msg.Tr("URL", "URL", "URL", "URL"),
+		"check.http.url.help": msg.Tr(
+			"Dirección completa, p. ej. https://ejemplo.org/salud",
+			"Full address, e.g. https://example.org/health",
+			"Vollständige Adresse, z. B. https://example.org/health",
+			"Adresse complète, p. ex. https://example.org/sante"),
+		"check.http.method":      msg.Tr("Método", "Method", "Methode", "Méthode"),
+		"check.http.method.get":  msg.Tr("GET", "GET", "GET", "GET"),
+		"check.http.method.head": msg.Tr("HEAD", "HEAD", "HEAD", "HEAD"),
+		"check.http.status":      msg.Tr("Códigos esperados", "Expected status codes", "Erwartete Statuscodes", "Codes attendus"),
+		"check.http.status.help": msg.Tr(
+			"Códigos o rangos separados por comas, p. ej. 200-299 o 200,301",
+			"Codes or ranges separated by commas, e.g. 200-299 or 200,301",
+			"Codes oder Bereiche, durch Kommas getrennt, z. B. 200-299 oder 200,301",
+			"Codes ou plages séparés par des virgules, p. ex. 200-299 ou 200,301"),
+		"check.http.timeout":   msg.Tr("Tiempo máximo", "Timeout", "Zeitlimit", "Délai maximal"),
+		"check.http.redirects": msg.Tr("Seguir redirecciones", "Follow redirects", "Weiterleitungen folgen", "Suivre les redirections"),
+		"check.http.insecure": msg.Tr(
+			"Ignorar certificados TLS no válidos",
+			"Ignore invalid TLS certificates",
+			"Ungültige TLS-Zertifikate ignorieren",
+			"Ignorer les certificats TLS non valides"),
+		"check.http.insecure.help": msg.Tr(
+			"Solo para servicios internos con certificados autofirmados.",
+			"Only for internal services with self-signed certificates.",
+			"Nur für interne Dienste mit selbstsignierten Zertifikaten.",
+			"Uniquement pour les services internes avec des certificats autosignés."),
+		"check.http.err.url": msg.Tr(
+			"Debe ser una URL http:// o https:// con servidor.",
+			"Must be an http:// or https:// URL with a host.",
+			"Muss eine http://- oder https://-URL mit Host sein.",
+			"Doit être une URL http:// ou https:// avec un hôte."),
+		"check.http.err.status": msg.Tr(
+			"Formato no válido. Ejemplos: 200, 200-299, 200,301.",
+			"Invalid format. Examples: 200, 200-299, 200,301.",
+			"Ungültiges Format. Beispiele: 200, 200-299, 200,301.",
+			"Format non valide. Exemples : 200, 200-299, 200,301."),
+		"check.http.msg.status":     msg.Tr("HTTP %v", "HTTP %v", "HTTP %v", "HTTP %v"),
+		"check.http.msg.unexpected": msg.Tr("HTTP %v (no esperado)", "HTTP %v (unexpected)", "HTTP %v (unerwartet)", "HTTP %v (inattendu)"),
 	})
 	Registry.Register(module.Info{
 		ID:          "http",
@@ -102,10 +124,10 @@ func (httpChecker) Target(p module.Values) string {
 func (httpChecker) Validate(p module.Values) module.Errors {
 	errs := module.Errors{}
 	if u, err := url.Parse(p.String("url")); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		errs["url"] = msg.T("check.http.err.url")
+		errs["url"] = msg.New("check.http.err.url")
 	}
 	if _, err := parseStatusRanges(p.String("expected_status")); err != nil {
-		errs["expected_status"] = msg.T("check.http.err.status")
+		errs["expected_status"] = msg.New("check.http.err.status")
 	}
 	if len(errs) == 0 {
 		return nil
@@ -116,14 +138,14 @@ func (httpChecker) Validate(p module.Values) module.Errors {
 func (httpChecker) Check(ctx context.Context, p module.Values) Result {
 	ranges, err := parseStatusRanges(p.String("expected_status"))
 	if err != nil {
-		return Result{Message: msg.T("check.http.err.status")}
+		return Result{Message: msg.New("check.http.err.status")}
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.Duration("timeout"))
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, p.String("method"), p.String("url"), nil)
 	if err != nil {
-		return Result{Message: msg.T("check.http.err.url")}
+		return Result{Message: msg.New("check.http.err.url")}
 	}
 	req.Header.Set("User-Agent", "Qaphi/"+version.Version)
 
@@ -145,9 +167,9 @@ func (httpChecker) Check(ctx context.Context, p module.Values) Result {
 	latency := time.Since(start)
 
 	if !matchStatus(ranges, resp.StatusCode) {
-		return Result{Latency: latency, Message: msg.F("check.http.msg.unexpected", resp.StatusCode)}
+		return Result{Latency: latency, Message: msg.New("check.http.msg.unexpected", resp.StatusCode)}
 	}
-	return Result{OK: true, Latency: latency, Message: msg.F("check.http.msg.status", resp.StatusCode)}
+	return Result{OK: true, Latency: latency, Message: msg.New("check.http.msg.status", resp.StatusCode)}
 }
 
 // statusRange es un rango cerrado de códigos HTTP.
@@ -173,12 +195,12 @@ func parseStatusRanges(s string) ([]statusRange, error) {
 			}
 		}
 		if a < 100 || b > 599 || a > b {
-			return nil, fmt.Errorf("rango no válido %q", part)
+			return nil, fmt.Errorf("invalid range %q", part)
 		}
 		out = append(out, statusRange{a, b})
 	}
 	if len(out) == 0 {
-		return nil, errors.New("sin códigos")
+		return nil, errors.New("no status codes")
 	}
 	return out, nil
 }
@@ -192,8 +214,8 @@ func matchStatus(ranges []statusRange, code int) bool {
 	return false
 }
 
-// describeNetError resume un error de red en un mensaje breve y legible.
-func describeNetError(ctx context.Context, err error) string {
+// describeNetError resume un error de red en un mensaje breve y traducible.
+func describeNetError(ctx context.Context, err error) msg.Msg {
 	var (
 		dnsErr  *net.DNSError
 		certErr *tls.CertificateVerificationError
@@ -201,23 +223,23 @@ func describeNetError(ctx context.Context, err error) string {
 	)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded):
-		return msg.T("check.http.msg.timeout")
+		return msg.New(MsgTimeout)
 	case errors.Is(err, syscall.ECONNREFUSED):
-		return msg.T("check.http.msg.refused")
+		return msg.New("check.msg.refused")
 	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH):
-		return msg.T("check.http.msg.unreachable")
+		return msg.New("check.msg.unreachable")
 	case errors.As(err, &dnsErr):
-		return msg.T("check.http.msg.dns")
+		return msg.New("check.msg.dns")
 	case errors.As(err, &certErr):
-		return msg.F("check.http.msg.tls", certErr.Err.Error())
+		return msg.New("check.msg.tls", truncate(certErr.Err.Error(), 200))
 	case errors.As(err, &recErr):
-		return msg.F("check.http.msg.tls", "respuesta no TLS")
+		return msg.New("check.msg.tls_plain")
 	}
 	var ue *url.Error
 	if errors.As(err, &ue) {
 		err = ue.Err
 	}
-	return msg.F("check.http.msg.error", truncate(err.Error(), 200))
+	return msg.New("check.msg.error", truncate(err.Error(), 200))
 }
 
 func truncate(s string, n int) string {

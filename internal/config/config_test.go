@@ -28,7 +28,7 @@ func TestParse(t *testing.T) {
 	}{
 		{
 			name: "valores por defecto",
-			want: Config{Listen: ":8091", DataDir: absData, LogLevel: slog.LevelInfo, LogFormat: "text", FlushInterval: 5 * time.Minute},
+			want: Config{Listen: "", DataDir: absData, LogLevel: slog.LevelInfo, LogFormat: "text", FlushInterval: 5 * time.Minute},
 		},
 		{
 			name: "variables de entorno",
@@ -47,7 +47,7 @@ func TestParse(t *testing.T) {
 		{
 			name: "variable vacía se ignora",
 			env:  map[string]string{"QAPHI_LISTEN": "  "},
-			want: Config{Listen: ":8091", DataDir: absData, LogLevel: slog.LevelInfo, LogFormat: "text", FlushInterval: 5 * time.Minute},
+			want: Config{Listen: "", DataDir: absData, LogLevel: slog.LevelInfo, LogFormat: "text", FlushInterval: 5 * time.Minute},
 		},
 		{
 			name: "IPv6",
@@ -55,14 +55,14 @@ func TestParse(t *testing.T) {
 			want: Config{Listen: "[::1]:8091", DataDir: absData, LogLevel: slog.LevelInfo, LogFormat: "text", FlushInterval: 5 * time.Minute},
 		},
 		{name: "listen sin puerto", args: []string{"--listen", "localhost"}, wantErr: "--listen"},
-		{name: "puerto fuera de rango", args: []string{"--listen", ":70000"}, wantErr: "puerto no válido"},
+		{name: "puerto fuera de rango", args: []string{"--listen", ":70000"}, wantErr: "invalid port"},
 		{name: "nivel de log erróneo en variable", env: map[string]string{"QAPHI_LOG_LEVEL": "verbose"}, wantErr: "QAPHI_LOG_LEVEL"},
-		{name: "formato de log erróneo", args: []string{"--log-format", "xml"}, wantErr: "formato no válido"},
-		{name: "intervalo ilegible", args: []string{"--flush-interval", "cinco"}, wantErr: "duración no válida"},
-		{name: "intervalo demasiado corto", args: []string{"--flush-interval", "1s"}, wantErr: "fuera de rango"},
-		{name: "intervalo demasiado largo", args: []string{"--flush-interval", "2h"}, wantErr: "fuera de rango"},
+		{name: "formato de log erróneo", args: []string{"--log-format", "xml"}, wantErr: "invalid format"},
+		{name: "intervalo ilegible", args: []string{"--flush-interval", "cinco"}, wantErr: "invalid duration"},
+		{name: "intervalo demasiado corto", args: []string{"--flush-interval", "1s"}, wantErr: "out of range"},
+		{name: "intervalo demasiado largo", args: []string{"--flush-interval", "2h"}, wantErr: "out of range"},
 		{name: "data-dir con interrogación", args: []string{"--data-dir", "/tmp/a?b"}, wantErr: "'?'"},
-		{name: "argumento sobrante", args: []string{"extra"}, wantErr: "argumento inesperado"},
+		{name: "argumento sobrante", args: []string{"extra"}, wantErr: "unexpected argument"},
 		{name: "flag desconocido", args: []string{"--nope"}, wantErr: "nope"},
 	}
 	for _, tt := range tests {
