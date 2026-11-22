@@ -21,6 +21,7 @@ import (
 
 	"github.com/future-chocolate6122/qaphi/internal/config"
 	"github.com/future-chocolate6122/qaphi/internal/netcfg"
+	"github.com/future-chocolate6122/qaphi/internal/settings"
 	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
 )
 
@@ -444,5 +445,140 @@ func TestCriterioFase2(t *testing.T) {
 	saved, err := netcfg.Load(ctx, a.store, false)
 	if err != nil || saved != (netcfg.Config{Bind: "127.0.0.1", Port: portB, TLS: true}) {
 		t.Fatalf("configuración guardada = %+v, %v", saved, err)
+	}
+}
+
+// TestCriterioFase3: provocar la caída de un servicio y que se registre una
+// incidencia con su duración; el modo público no muestra ningún destino.
+func TestCriterioFase3(t *testing.T) {
+	ctx := context.Background()
+	// Servicio TCP que se puede tirar y levantar en el mismo puerto.
+	svc, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svcAddr := svc.Addr().String()
+	serve := func(ln net.Listener) {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}
+	go serve(svc)
+
+	cfg := &config.Config{Listen: "127.0.0.1:0", DataDir: t.TempDir(), FlushInterval: time.Minute}
+	logs := &syncBuffer{}
+	r := start(t, cfg, logs)
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar, Timeout: 10 * time.Second}
+	get := func(path string) string {
+		t.Helper()
+		res, err := client.Get(r.base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return string(b)
+	}
+	post := func(path string, form url.Values) int {
+		t.Helper()
+		res, err := client.PostForm(r.base+path, form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	csrf := func(path string) string {
+		t.Helper()
+		m := csrfRe.FindStringSubmatch(get(path))
+		if m == nil {
+			t.Fatalf("sin token CSRF en %s", path)
+		}
+		return m[1]
+	}
+	waitFor := func(what string, d time.Duration, cond func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+			if cond() {
+				return
+			}
+		}
+		t.Fatalf("no se cumplió: %s", what)
+	}
+
+	var token []string
+	waitFor("token", 5*time.Second, func() bool { token = tokenRe.FindStringSubmatch(logs.String()); return token != nil })
+	pw := "contraseña de la fase tres"
+	post("/setup", url.Values{"csrf": {csrf("/setup")}, "token": {token[1]}, "password": {pw}, "confirm": {pw}})
+
+	host, port, _ := net.SplitHostPort(svcAddr)
+	tok := csrf("/admin")
+	if code := post("/admin/checks", url.Values{"csrf": {tok}, "type": {"tcp"}, "name": {"Servicio crítico"}, "interval": {"10s"},
+		"fail_threshold": {"1"}, "p_host": {host}, "p_port": {port}, "p_timeout": {"1s"}}); code != 200 {
+		t.Fatalf("crear check: %d", code)
+	}
+	cs, _ := r.app.store.ListChecks(ctx)
+	id := cs[0].ID
+	status := func() string { st, _ := r.app.tracker.Get(id); return string(st.Status) }
+	waitFor("operativo", 10*time.Second, func() bool { return status() == "up" })
+
+	// Caída: se cierra el servicio y se fuerza la comprobación.
+	svc.Close()
+	r.app.sched.Trigger(id)
+	waitFor("caído", 10*time.Second, func() bool { return status() == "down" })
+	time.Sleep(1100 * time.Millisecond) // que la incidencia dure algo
+	// Recuperación en el mismo puerto.
+	svc2, err := net.Listen("tcp", svcAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc2.Close()
+	go serve(svc2)
+	r.app.sched.Trigger(id)
+	waitFor("recuperado", 10*time.Second, func() bool { return status() == "up" })
+
+	incs, err := r.app.store.ListIncidents(ctx, id, 10)
+	if err != nil || len(incs) != 1 || incs[0].Open() || incs[0].Duration(time.Now()) < time.Second {
+		t.Fatalf("incidencia = %+v, %v", incs, err)
+	}
+	if !strings.Contains(logs.String(), `msg="check down" check="Servicio crítico"`) || !strings.Contains(logs.String(), `msg="check recovered"`) {
+		t.Errorf("faltan la caída o la recuperación en el log:\n%s", logs.String())
+	}
+	body := get("/check/" + strconv.FormatInt(id, 10) + "/data.json?range=1h")
+	if !strings.Contains(body, `"open":false`) || !strings.Contains(body, `"duration":"1 s"`) {
+		t.Errorf("la incidencia no aparece con su duración: %s", body)
+	}
+
+	// Reinicio: la incidencia cerrada, los pulsos y el uptime se conservan.
+	r.stop(t)
+	r = start(t, cfg, logs)
+	defer r.stop(t)
+	if st, _ := r.app.tracker.Get(id); len(st.Recent) < 3 || st.Status != "up" {
+		t.Fatalf("estado tras reiniciar = %+v", st)
+	}
+	if up := r.app.tracker.Uptime(id)[0]; up <= 0 || up >= 1 {
+		t.Errorf("uptime tras reiniciar = %v", up)
+	}
+
+	// Modo público: sin sesión, ningún destino ni error.
+	client.Jar, _ = cookiejar.New(nil)
+	if err := r.app.settings.SetData(ctx, settings.Data{Public: true, RawHours: 48, AggregateDays: 90, SessionTTL: time.Hour}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/home", "/home/state.json", "/check/" + strconv.FormatInt(id, 10), "/check/" + strconv.FormatInt(id, 10) + "/data.json?range=1h"} {
+		body := get(path)
+		if !strings.Contains(body, "Servicio crítico") {
+			t.Errorf("%s: la página pública debe mostrar el servicio", path)
+		}
+		for _, leak := range []string{svcAddr, port, "refused", "rechazada"} {
+			if strings.Contains(body, leak) {
+				t.Errorf("%s muestra %q en modo público", path, leak)
+			}
+		}
 	}
 }

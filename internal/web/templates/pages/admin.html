@@ -13,7 +13,7 @@
   <tbody>
   {{range .Body.Rows}}
     <tr>
-      <td data-label="{{t "col.name"}}"><strong>{{.Name}}</strong>{{if .Target}}<br><small class="muted target">{{.Target}}</small>{{end}}</td>
+      <td data-label="{{t "col.name"}}"><a href="/check/{{.ID}}"><strong>{{.Name}}</strong></a>{{if .Target}}<br><small class="muted target">{{.Target}}</small>{{end}}</td>
       <td data-label="{{t "col.type"}}">{{t .TypeName}}</td>
       <td data-label="{{t "col.group"}}">{{.Group}}</td>
       <td data-label="{{t "col.interval"}}">{{.Interval}}</td>

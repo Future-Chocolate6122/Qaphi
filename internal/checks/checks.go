@@ -19,6 +19,14 @@ type Result struct {
 	// mensaje traducible. Se muestra en la interfaz: nunca debe contener
 	// secretos.
 	Message msg.Msg
+	// Degraded: correcto pero con aviso (p. ej. certificado TLS a punto de
+	// caducar o una palabra clave ausente en modo aviso).
+	Degraded bool
+	// NoPerm: el sistema no permite hacer la comprobación (p. ej. ICMP sin
+	// permisos). No cuenta como caída.
+	NoPerm bool
+	// CertExpiry es la caducidad del certificado TLS, si se ha visto uno.
+	CertExpiry time.Time
 }
 
 // Checker es un tipo de check.
@@ -35,6 +43,12 @@ type Checker interface {
 	Target(p module.Values) string
 	// Timeout devuelve el tiempo máximo configurado para el check.
 	Timeout(p module.Values) time.Duration
+}
+
+// Preparer es una interfaz opcional de un Checker: completa los parámetros
+// antes de validarlos (p. ej. genera el token de un heartbeat al crearlo).
+type Preparer interface {
+	Prepare(p module.Values) module.Values
 }
 
 // Registry contiene los tipos de check disponibles en este binario.

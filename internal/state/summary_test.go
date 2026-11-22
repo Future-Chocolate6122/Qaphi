@@ -25,6 +25,7 @@ func TestSummary(t *testing.T) {
 		return cs, snap
 	}
 	up, down, unk, paused := model.StatusUp, model.StatusDown, model.StatusUnknown, model.StatusPaused
+	slow, pend := model.StatusDegraded, model.StatusPending
 	tests := []struct {
 		statuses []model.Status
 		want     string // en castellano
@@ -35,6 +36,8 @@ func TestSummary(t *testing.T) {
 		{[]model.Status{up, up, up, down}, "3/4 (1 caído)", "3/4 (1 down)", down},
 		{[]model.Status{up, down, down}, "1/3 (2 caídos)", "1/3 (2 down)", down},
 		{[]model.Status{up, unk, ""}, "1/3 (2 sin datos)", "1/3 (2 no data)", up},
+		{[]model.Status{up, slow, pend}, "3/3 (1 con fallos, 1 lento)", "3/3 (1 failing, 1 slow)", model.StatusDegraded},
+		{[]model.Status{up, model.StatusNoPerm}, "1/2 (1 sin permisos)", "1/2 (1 no permission)", up},
 		{[]model.Status{up, down, unk, paused}, "1/3 (1 caído, 1 sin datos)", "1/3 (1 down, 1 no data)", down},
 		{[]model.Status{paused}, "0/0 (sin checks activos)", "0/0 (no active checks)", unk},
 		{nil, "0/0 (sin checks activos)", "0/0 (no active checks)", unk},

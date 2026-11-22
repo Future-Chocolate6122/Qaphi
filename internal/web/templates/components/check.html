@@ -1,0 +1,50 @@
+{{define "c-check-summary"}}
+<section class="card detail-head">
+  <div class="detail-main">
+    <div class="detail-title">
+      <h1>{{.Body.Name}}</h1>
+      {{template "badge" .Body}}
+    </div>
+    {{if .Body.Target}}<p class="target muted">{{.Body.Target}}</p>{{end}}
+    <p class="muted small">{{t .Body.TypeName}} · {{.Body.Interval}}{{with .Body.Group}} · {{.}}{{end}}</p>
+    <p class="muted small" data-field="message">{{.Body.Message}}</p>
+  </div>
+  <div class="ring" data-ring data-label="{{t "uptime.title"}} {{t "uptime.24h"}}"></div>
+  <dl class="stats">
+    <div class="stat"><dt>{{t "col.latency"}}</dt><dd data-field="latency">{{.Body.Latency}}</dd></div>
+    <div class="stat"><dt>{{t "detail.avg"}}</dt><dd data-field="avg">{{.Body.Avg}}</dd></div>
+    {{range $i, $u := .Body.Uptimes}}<div class="stat"><dt>{{t "uptime.title"}} · {{$u.Label}}</dt><dd class="uptime-{{$u.Level}}" data-uptime="{{$i}}">{{$u.Text}}</dd></div>{{end}}
+    {{with .Body.Cert}}<div class="stat"><dt>{{t "detail.cert"}}</dt><dd class="uptime-{{$.Body.CertLevel}}">{{.}}</dd></div>{{end}}
+  </dl>
+  <h2>{{t "detail.beats"}}</h2>
+  <div class="beats beats-lg" data-beats aria-hidden="true"></div>
+</section>
+{{end}}
+
+{{define "c-check-chart"}}
+<section class="card">
+  <div class="chart-head">
+    <h2>{{t "detail.chart"}}</h2>
+    <nav class="segmented" aria-label="{{t "detail.chart"}}">
+      {{range .Body.Ranges}}<a href="?range={{.Key}}" data-range="{{.Key}}"{{if .Active}} aria-current="true"{{end}}>{{.Label}}</a>{{end}}
+    </nav>
+  </div>
+  <div class="chart" data-chart data-unit="ms"></div>
+  <p class="muted small" data-nodata{{if .Body.Points}} hidden{{end}}>{{t "detail.no_data"}}</p>
+</section>
+{{end}}
+
+{{define "c-check-heatmap"}}
+<section class="card">
+  <h2>{{t "detail.heatmap"}}</h2>
+  <div class="heatmap" data-heatmap></div>
+</section>
+{{end}}
+
+{{define "c-check-incidents"}}
+<section class="card">
+  <h2>{{t "detail.incidents"}}</h2>
+  <p class="muted"{{if .Body.Incidents}} hidden{{end}} data-no-incidents>{{t "detail.no_incidents"}}</p>
+  <div{{if not .Body.Incidents}} hidden{{end}} data-incidents-card>{{template "incidents-table" .}}</div>
+</section>
+{{end}}

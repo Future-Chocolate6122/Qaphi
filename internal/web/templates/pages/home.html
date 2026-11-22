@@ -1,31 +1,4 @@
 {{define "content"}}
-<section class="banner banner-{{.Body.Level}}" data-banner>
-  <h1>{{t "home.title"}}</h1>
-  <p class="summary" data-summary>{{.Body.Summary}}</p>
-</section>
-{{if .Body.Rows}}
-<div class="table-wrap">
-<table class="checks">
-  <thead><tr>
-    <th>{{t "col.name"}}</th><th>{{t "col.group"}}</th><th>{{t "col.status"}}</th>
-    <th class="num">{{t "col.latency"}}</th><th>{{t "col.last"}}</th><th>{{t "col.detail"}}</th>
-  </tr></thead>
-  <tbody>
-  {{range .Body.Rows}}
-    <tr data-id="{{.ID}}">
-      <td data-label="{{t "col.name"}}"><strong>{{.Name}}</strong>{{if .Target}}<br><small class="muted target">{{.Target}}</small>{{end}}</td>
-      <td data-label="{{t "col.group"}}">{{.Group}}</td>
-      <td data-label="{{t "col.status"}}">{{template "badge" .}}</td>
-      <td data-label="{{t "col.latency"}}" class="num" data-field="latency">{{.Latency}}</td>
-      <td data-label="{{t "col.last"}}" data-field="last" title="{{.LastTitle}}">{{.Last}}</td>
-      <td data-label="{{t "col.detail"}}" class="muted" data-field="message">{{.Message}}</td>
-    </tr>
-  {{end}}
-  </tbody>
-</table>
-</div>
+{{range .Body.Components}}{{component . $}}{{end}}
 <p class="muted small">{{t "home.live"}}</p>
-{{else}}
-<section class="card"><p>{{t "home.empty"}} <a href="/admin">{{t "home.empty.admin"}}</a></p></section>
-{{end}}
 {{end}}

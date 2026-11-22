@@ -46,7 +46,7 @@ type ClockGuard interface{ Valid() bool }
 
 // Recorder recibe los resultados.
 type Recorder interface {
-	Record(r model.Result) state.Transition
+	Record(o state.Observation) state.Transition
 }
 
 // Lookup resuelve el implementador de un tipo de check.
@@ -139,6 +139,17 @@ func (s *Scheduler) Set(c model.Check) {
 	j.check = c
 	j.gen++
 	j.next = s.now().Add(jitter(editDelay))
+	s.mu.Unlock()
+	s.signal()
+}
+
+// Trigger adelanta la siguiente ejecución de un check a ahora mismo (p. ej.
+// al recibir el pulso de un heartbeat).
+func (s *Scheduler) Trigger(id int64) {
+	s.mu.Lock()
+	if j, ok := s.jobs[id]; ok && !j.check.Paused {
+		j.next = s.now()
+	}
 	s.mu.Unlock()
 	s.signal()
 }
@@ -265,14 +276,19 @@ func (s *Scheduler) execute(ctx context.Context, id, gen int64, c model.Check, c
 		return // el check se borró o se modificó mientras se ejecutaba
 	}
 
-	tr := s.rec.Record(model.Result{CheckID: c.ID, At: start, OK: r.OK, Latency: r.Latency, Message: r.Message.Encode()})
+	tr := s.rec.Record(state.Observation{
+		CheckID: c.ID, At: start, OK: r.OK, Degraded: r.Degraded, NoPerm: r.NoPerm,
+		Latency: r.Latency, Message: r.Message, CertExpiry: r.CertExpiry,
+	})
 	// En info solo se registran los cambios de estado, nunca cada resultado
 	// (journald también escribe en disco).
 	switch {
-	case tr.Changed && tr.To == model.StatusDown:
+	case tr.Opened != nil:
 		s.log.Warn("check down", "check", c.Name, "reason", r.Message.String())
-	case tr.Changed && tr.From == model.StatusDown:
-		s.log.Info("check recovered", "check", c.Name)
+	case tr.Closed != nil:
+		s.log.Info("check recovered", "check", c.Name, "downtime", tr.Closed.Duration(start).Round(time.Second).String())
+	case tr.Changed && tr.To == model.StatusNoPerm:
+		s.log.Warn("check cannot run: missing permission", "check", c.Name, "reason", r.Message.String())
 	}
 }
 

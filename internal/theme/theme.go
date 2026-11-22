@@ -24,7 +24,7 @@ var Variables = []string{
 	"color-scheme", // "light" o "dark": controles nativos del navegador
 	"bg", "surface", "text", "muted", "border",
 	"accent", "accent-text", "danger", "banner-text",
-	"status-up", "status-slow", "status-down", "status-unknown", "status-paused",
+	"status-up", "status-slow", "status-pending", "status-down", "status-unknown", "status-paused",
 	"radius", "space", "font", "mono",
 }
 

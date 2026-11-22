@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,9 +48,10 @@ type UI struct {
 type Service struct {
 	st store.Store
 
-	mu  sync.RWMutex
-	ui  UI
-	loc *time.Location
+	mu   sync.RWMutex
+	ui   UI
+	loc  *time.Location
+	data Data
 }
 
 // Load lee los ajustes guardados.
@@ -71,6 +73,9 @@ func Load(ctx context.Context, st store.Store) (*Service, error) {
 		if loc, err := time.LoadLocation(v); err == nil {
 			s.ui.Timezone, s.loc = v, loc
 		}
+	}
+	if err := s.loadData(ctx); err != nil {
+		return nil, err
 	}
 	return s, nil
 }
@@ -153,4 +158,120 @@ func SystemTimezone() string {
 		return name
 	}
 	return "UTC"
+}
+
+// Claves de los ajustes de datos y de la página pública (estables).
+const (
+	KeyPublic         = "page.public"
+	KeyRawHours       = "retention.raw_hours"
+	KeyAggregateDays  = "retention.aggregate_days"
+	KeyAggregatesOnly = "retention.aggregates_only"
+	KeySessionTTL     = "session.ttl" // lo lee también auth
+)
+
+// Límites y valores por defecto de los ajustes de datos.
+const (
+	DefaultRawHours      = 48
+	MinRawHours          = 1
+	MaxRawHours          = 720
+	DefaultAggregateDays = 90
+	MinAggregateDays     = 7
+	MaxAggregateDays     = 730
+	DefaultSessionTTL    = 7 * 24 * time.Hour
+	MinSessionTTL        = time.Hour
+	MaxSessionTTL        = 365 * 24 * time.Hour
+)
+
+// Data son los ajustes de la página pública, la retención y las sesiones.
+type Data struct {
+	Public         bool
+	RawHours       int
+	AggregateDays  int
+	AggregatesOnly bool
+	SessionTTL     time.Duration
+}
+
+// DefaultData devuelve los ajustes de datos por defecto.
+func DefaultData() Data {
+	return Data{RawHours: DefaultRawHours, AggregateDays: DefaultAggregateDays, SessionTTL: DefaultSessionTTL}
+}
+
+// Validate comprueba los límites. Devuelve el nombre del campo erróneo.
+func (d Data) Validate() (field string, ok bool) {
+	switch {
+	case d.RawHours < MinRawHours || d.RawHours > MaxRawHours:
+		return "raw_hours", false
+	case d.AggregateDays < MinAggregateDays || d.AggregateDays > MaxAggregateDays:
+		return "aggregate_days", false
+	case d.SessionTTL < MinSessionTTL || d.SessionTTL > MaxSessionTTL:
+		return "session_ttl", false
+	}
+	return "", true
+}
+
+// LoadData lee los ajustes de datos (se llama desde Load).
+func (s *Service) loadData(ctx context.Context) error {
+	d := DefaultData()
+	get := func(key string) (string, bool, error) { return s.st.GetSetting(ctx, key) }
+	if v, ok, err := get(KeyPublic); err != nil {
+		return err
+	} else if ok {
+		d.Public = v == "true"
+	}
+	if v, ok, err := get(KeyAggregatesOnly); err != nil {
+		return err
+	} else if ok {
+		d.AggregatesOnly = v == "true"
+	}
+	if v, ok, err := get(KeyRawHours); err != nil {
+		return err
+	} else if n, err := strconv.Atoi(v); ok && err == nil {
+		d.RawHours = n
+	}
+	if v, ok, err := get(KeyAggregateDays); err != nil {
+		return err
+	} else if n, err := strconv.Atoi(v); ok && err == nil {
+		d.AggregateDays = n
+	}
+	if v, ok, err := get(KeySessionTTL); err != nil {
+		return err
+	} else if t, err := time.ParseDuration(v); ok && err == nil {
+		d.SessionTTL = t
+	}
+	if _, valid := d.Validate(); !valid {
+		d = DefaultData()
+	}
+	s.mu.Lock()
+	s.data = d
+	s.mu.Unlock()
+	return nil
+}
+
+// Data devuelve los ajustes de datos actuales.
+func (s *Service) Data() Data {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data
+}
+
+// SetData valida y guarda los ajustes de datos.
+func (s *Service) SetData(ctx context.Context, d Data) error {
+	if field, ok := d.Validate(); !ok {
+		return fmt.Errorf("invalid value for %s", field)
+	}
+	for k, v := range map[string]string{
+		KeyPublic:         strconv.FormatBool(d.Public),
+		KeyAggregatesOnly: strconv.FormatBool(d.AggregatesOnly),
+		KeyRawHours:       strconv.Itoa(d.RawHours),
+		KeyAggregateDays:  strconv.Itoa(d.AggregateDays),
+		KeySessionTTL:     d.SessionTTL.String(),
+	} {
+		if err := s.st.SetSetting(ctx, k, v); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	s.data = d
+	s.mu.Unlock()
+	return nil
 }

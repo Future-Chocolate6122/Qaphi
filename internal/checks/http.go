@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -20,8 +21,13 @@ import (
 	"github.com/future-chocolate6122/qaphi/internal/version"
 )
 
-// maxBodyRead es lo máximo que se lee del cuerpo de la respuesta.
-const maxBodyRead = 64 << 10
+// Límites de lectura del cuerpo de la respuesta: sin palabra clave solo se
+// descarta un poco (para cerrar bien la conexión); con palabra clave se lee
+// hasta 1 MiB para buscarla.
+const (
+	maxBodyRead    = 64 << 10
+	maxKeywordBody = 1 << 20
+)
 
 func init() {
 	msg.Register(map[string]msg.Text{
@@ -70,6 +76,25 @@ func init() {
 			"Format non valide. Exemples : 200, 200-299, 200,301."),
 		"check.http.msg.status":     msg.Tr("HTTP %v", "HTTP %v", "HTTP %v", "HTTP %v"),
 		"check.http.msg.unexpected": msg.Tr("HTTP %v (no esperado)", "HTTP %v (unexpected)", "HTTP %v (unerwartet)", "HTTP %v (inattendu)"),
+		"check.http.keyword":        msg.Tr("Palabra clave", "Keyword", "Schlüsselwort", "Mot-clé"),
+		"check.http.keyword.help": msg.Tr(
+			"Opcional. Texto que se busca en la respuesta (distingue mayúsculas).",
+			"Optional. Text to look for in the response (case-sensitive).",
+			"Optional. Text, der in der Antwort gesucht wird (Groß-/Kleinschreibung beachten).",
+			"Facultatif. Texte recherché dans la réponse (sensible à la casse)."),
+		"check.http.keyword_mode":    msg.Tr("La respuesta debe", "The response must", "Die Antwort muss", "La réponse doit"),
+		"check.http.keyword.present": msg.Tr("contener la palabra clave", "contain the keyword", "das Schlüsselwort enthalten", "contenir le mot-clé"),
+		"check.http.keyword.absent":  msg.Tr("no contener la palabra clave", "not contain the keyword", "das Schlüsselwort nicht enthalten", "ne pas contenir le mot-clé"),
+		"check.http.tls_days":        msg.Tr("Avisar si el certificado caduca en menos de (días)", "Warn if the certificate expires in less than (days)", "Warnen, wenn das Zertifikat in weniger als (Tagen) abläuft", "Avertir si le certificat expire dans moins de (jours)"),
+		"check.http.tls_days.help": msg.Tr(
+			"Solo para HTTPS. 0 = no avisar.",
+			"HTTPS only. 0 = no warning.",
+			"Nur für HTTPS. 0 = keine Warnung.",
+			"HTTPS uniquement. 0 = pas d’avertissement."),
+		"check.http.msg.keyword_missing": msg.Tr("HTTP %v, falta la palabra clave", "HTTP %v, keyword missing", "HTTP %v, Schlüsselwort fehlt", "HTTP %v, mot-clé absent"),
+		"check.http.msg.keyword_found":   msg.Tr("HTTP %v, contiene la palabra clave", "HTTP %v, keyword present", "HTTP %v, Schlüsselwort vorhanden", "HTTP %v, mot-clé présent"),
+		"check.http.msg.cert_expires":    msg.Tr("HTTP %v, el certificado caduca en %v días", "HTTP %v, certificate expires in %v days", "HTTP %v, Zertifikat läuft in %v Tagen ab", "HTTP %v, le certificat expire dans %v jours"),
+		"check.http.msg.cert_expired":    msg.Tr("HTTP %v, certificado caducado", "HTTP %v, certificate expired", "HTTP %v, Zertifikat abgelaufen", "HTTP %v, certificat expiré"),
 	})
 	Registry.Register(module.Info{
 		ID:          "http",
@@ -85,6 +110,11 @@ func init() {
 			{Key: "timeout", Label: "check.http.timeout", Type: module.Duration, Default: DefaultTimeout, Min: MinTimeout, Max: MaxTimeout},
 			{Key: "follow_redirects", Label: "check.http.redirects", Type: module.Bool, Default: "true"},
 			{Key: "insecure_tls", Label: "check.http.insecure", Help: "check.http.insecure.help", Type: module.Bool},
+			{Key: "keyword", Label: "check.http.keyword", Help: "check.http.keyword.help", Type: module.Text, MaxLen: 200},
+			{Key: "keyword_mode", Label: "check.http.keyword_mode", Type: module.Select, Default: "present", Options: []module.Option{
+				{Value: "present", Label: "check.http.keyword.present"}, {Value: "absent", Label: "check.http.keyword.absent"},
+			}},
+			{Key: "tls_expiry_days", Label: "check.http.tls_days", Help: "check.http.tls_days.help", Type: module.Int, Default: "14", Min: "0", Max: "365"},
 		},
 	}, httpChecker{})
 }
@@ -162,14 +192,50 @@ func (httpChecker) Check(ctx context.Context, p module.Values) Result {
 	if err != nil {
 		return Result{Latency: time.Since(start), Message: describeNetError(ctx, err)}
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBodyRead))
+	keyword := p.String("keyword")
+	var body []byte
+	if keyword != "" && p.String("method") != http.MethodHead {
+		body, _ = io.ReadAll(io.LimitReader(resp.Body, maxKeywordBody))
+	} else {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBodyRead))
+	}
 	resp.Body.Close()
 	latency := time.Since(start)
 
-	if !matchStatus(ranges, resp.StatusCode) {
-		return Result{Latency: latency, Message: msg.New("check.http.msg.unexpected", resp.StatusCode)}
+	res := Result{Latency: latency}
+	if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
+		res.CertExpiry = resp.TLS.PeerCertificates[0].NotAfter
 	}
-	return Result{OK: true, Latency: latency, Message: msg.New("check.http.msg.status", resp.StatusCode)}
+	code := resp.StatusCode
+	if !matchStatus(ranges, code) {
+		res.Message = msg.New("check.http.msg.unexpected", code)
+		return res
+	}
+	if keyword != "" {
+		found := bytes.Contains(body, []byte(keyword))
+		switch mode := p.String("keyword_mode"); {
+		case mode == "absent" && found:
+			res.Message = msg.New("check.http.msg.keyword_found", code)
+			return res
+		case mode != "absent" && !found:
+			res.Message = msg.New("check.http.msg.keyword_missing", code)
+			return res
+		}
+	}
+	res.OK = true
+	res.Message = msg.New("check.http.msg.status", code)
+	// Aviso de caducidad del certificado: el check sigue correcto, pero lento
+	// o «con aviso» (amarillo).
+	if days := p.Int64("tls_expiry_days"); days > 0 && !res.CertExpiry.IsZero() {
+		left := time.Until(res.CertExpiry)
+		switch {
+		case left <= 0:
+			res.Degraded, res.Message = true, msg.New("check.http.msg.cert_expired", code)
+		case left < time.Duration(days)*24*time.Hour:
+			res.Degraded, res.Message = true, msg.New("check.http.msg.cert_expires", code, int64(left/(24*time.Hour)))
+		}
+	}
+	return res
 }
 
 // statusRange es un rango cerrado de códigos HTTP.

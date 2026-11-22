@@ -88,6 +88,9 @@ func init() {
 		"summary.down.one":  {"%d caído", "%d down", "%d ausgefallen", "%d en panne"},
 		"summary.down.many": {"%d caídos", "%d down", "%d ausgefallen", "%d en panne"},
 		"summary.unknown":   {"%d sin datos", "%d no data", "%d ohne Daten", "%d sans données"},
+		"summary.pending":   {"%d con fallos", "%d failing", "%d mit Fehlern", "%d en échec"},
+		"summary.degraded":  {"%d lento", "%d slow", "%d langsam", "%d lent"},
+		"summary.noperm":    {"%d sin permisos", "%d no permission", "%d ohne Berechtigung", "%d sans autorisation"},
 		"summary.none":      {"0/0 (sin checks activos)", "0/0 (no active checks)", "0/0 (keine aktiven Checks)", "0/0 (aucun check actif)"},
 
 		// Columnas
@@ -103,10 +106,13 @@ func init() {
 		"col.actions":  {"Acciones", "Actions", "Aktionen", "Actions"},
 
 		// Estados
-		"status.up":      {"Operativo", "Up", "In Betrieb", "Opérationnel"},
-		"status.down":    {"Caído", "Down", "Ausgefallen", "En panne"},
-		"status.unknown": {"Sin datos", "No data", "Keine Daten", "Pas de données"},
-		"status.paused":  {"Pausado", "Paused", "Pausiert", "En pause"},
+		"status.up":       {"Operativo", "Up", "In Betrieb", "Opérationnel"},
+		"status.down":     {"Caído", "Down", "Ausgefallen", "En panne"},
+		"status.unknown":  {"Sin datos", "No data", "Keine Daten", "Pas de données"},
+		"status.paused":   {"Pausado", "Paused", "Pausiert", "En pause"},
+		"status.degraded": {"Lento", "Slow", "Langsam", "Lent"},
+		"status.pending":  {"Con fallos", "Failing", "Fehlerhaft", "En échec"},
+		"status.noperm":   {"Sin permisos", "No permission", "Keine Berechtigung", "Sans autorisation"},
 
 		// Tiempo relativo
 		"time.never": {"nunca", "never", "nie", "jamais"},
@@ -221,6 +227,77 @@ func init() {
 		},
 		"field.bool":   {"Valor no válido.", "Invalid value.", "Ungültiger Wert.", "Valeur non valide."},
 		"field.select": {"Opción no válida.", "Invalid option.", "Ungültige Option.", "Option non valide."},
+
+		// Páginas de estado (fase 3)
+		"nav.login":             {"Iniciar sesión", "Sign in", "Anmelden", "Se connecter"},
+		"group.none":            {"Sin grupo", "Ungrouped", "Ohne Gruppe", "Sans groupe"},
+		"uptime.24h":            {"24 h", "24 h", "24 Std.", "24 h"},
+		"uptime.7d":             {"7 días", "7 days", "7 Tage", "7 jours"},
+		"uptime.30d":            {"30 días", "30 days", "30 Tage", "30 jours"},
+		"uptime.title":          {"Disponibilidad", "Uptime", "Verfügbarkeit", "Disponibilité"},
+		"uptime.none":           {"—", "—", "—", "—"},
+		"range.1h":              {"1 h", "1 h", "1 Std.", "1 h"},
+		"range.24h":             {"24 h", "24 h", "24 Std.", "24 h"},
+		"range.7d":              {"7 d", "7 d", "7 T", "7 j"},
+		"range.30d":             {"30 d", "30 d", "30 T", "30 j"},
+		"detail.chart":          {"Tiempo de respuesta", "Response time", "Antwortzeit", "Temps de réponse"},
+		"detail.heatmap":        {"Últimos 90 días", "Last 90 days", "Letzte 90 Tage", "90 derniers jours"},
+		"detail.heatmap.nodata": {"sin datos", "no data", "keine Daten", "pas de données"},
+		"detail.beats":          {"Últimas comprobaciones", "Latest checks", "Letzte Prüfungen", "Dernières vérifications"},
+		"detail.incidents":      {"Incidencias", "Incidents", "Vorfälle", "Incidents"},
+		"detail.no_incidents":   {"Sin incidencias registradas.", "No incidents recorded.", "Keine Vorfälle erfasst.", "Aucun incident enregistré."},
+		"detail.cert":           {"Certificado TLS", "TLS certificate", "TLS-Zertifikat", "Certificat TLS"},
+		"detail.cert.expires":   {"caduca el %s (%d días)", "expires on %s (%d days)", "läuft am %s ab (%d Tage)", "expire le %s (%d jours)"},
+		"detail.cert.expired":   {"caducado el %s", "expired on %s", "abgelaufen am %s", "expiré le %s"},
+		"detail.interval":       {"cada %s", "every %s", "alle %s", "toutes les %s"},
+		"detail.avg":            {"Media", "Average", "Mittelwert", "Moyenne"},
+		"detail.no_data":        {"Todavía no hay datos para este rango.", "No data for this range yet.", "Noch keine Daten für diesen Zeitraum.", "Pas encore de données pour cette période."},
+		"incident.check":        {"Servicio", "Service", "Dienst", "Service"},
+		"incident.start":        {"Inicio", "Start", "Beginn", "Début"},
+		"incident.duration":     {"Duración", "Duration", "Dauer", "Durée"},
+		"incident.error":        {"Último error", "Last error", "Letzter Fehler", "Dernière erreur"},
+		"incident.open":         {"en curso", "ongoing", "andauernd", "en cours"},
+		"home.incidents":        {"Últimas incidencias", "Latest incidents", "Letzte Vorfälle", "Derniers incidents"},
+		"home.public":           {"Página de estado pública", "Public status page", "Öffentliche Statusseite", "Page d’état publique"},
+		"beat.tip":              {"%s · %s", "%s · %s", "%s · %s", "%s · %s"},
+		"chart.tip.failed":      {"%s · %d %% fallos", "%s · %d%% failed", "%s · %d %% fehlgeschlagen", "%s · %d %% d’échecs"},
+
+		// Duraciones legibles
+		"dur.s":  {"%d s", "%d s", "%d s", "%d s"},
+		"dur.m":  {"%d min", "%d min", "%d min", "%d min"},
+		"dur.hm": {"%d h %d min", "%d h %d min", "%d Std. %d Min.", "%d h %d min"},
+		"dur.dh": {"%d d %d h", "%d d %d h", "%d T %d Std.", "%d j %d h"},
+
+		// Ajustes de datos
+		"settings.data":   {"Página de estado y datos", "Status page and data", "Statusseite und Daten", "Page d’état et données"},
+		"settings.public": {"Página de estado pública", "Public status page", "Öffentliche Statusseite", "Page d’état publique"},
+		"settings.public.help": {
+			"Visible sin iniciar sesión, pero sin destinos (URL, IP, puertos) ni detalles de errores.",
+			"Visible without signing in, but without targets (URLs, IPs, ports) or error details.",
+			"Ohne Anmeldung sichtbar, aber ohne Ziele (URLs, IPs, Ports) und ohne Fehlerdetails.",
+			"Visible sans connexion, mais sans cibles (URL, IP, ports) ni détails d’erreur.",
+		},
+		"settings.raw_hours":      {"Conservar resultados detallados (horas)", "Keep detailed results (hours)", "Detaillierte Ergebnisse aufbewahren (Stunden)", "Conserver les résultats détaillés (heures)"},
+		"settings.raw_hours.help": {"Entre 1 y 720.", "Between 1 and 720.", "Zwischen 1 und 720.", "Entre 1 et 720."},
+		"settings.agg_days":       {"Conservar resúmenes por hora (días)", "Keep hourly summaries (days)", "Stündliche Zusammenfassungen aufbewahren (Tage)", "Conserver les résumés horaires (jours)"},
+		"settings.agg_days.help":  {"Entre 7 y 730. También se aplica a las incidencias.", "Between 7 and 730. Also applies to incidents.", "Zwischen 7 und 730. Gilt auch für Vorfälle.", "Entre 7 et 730. S’applique aussi aux incidents."},
+		"settings.agg_only":       {"Guardar solo resúmenes (menos escrituras en disco)", "Store summaries only (fewer disk writes)", "Nur Zusammenfassungen speichern (weniger Schreibvorgänge)", "N’enregistrer que les résumés (moins d’écritures disque)"},
+		"settings.agg_only.help": {
+			"Para tarjetas microSD. La gráfica de 1 h usa solo los datos en memoria.",
+			"For microSD cards. The 1 h chart only uses data in memory.",
+			"Für microSD-Karten. Das 1-Std.-Diagramm nutzt nur Daten im Speicher.",
+			"Pour les cartes microSD. Le graphique 1 h n’utilise que les données en mémoire.",
+		},
+		"settings.session_ttl":      {"Duración de la sesión", "Session lifetime", "Sitzungsdauer", "Durée de session"},
+		"settings.session_ttl.help": {"Entre 1h y 8760h (p. ej. 168h = 7 días).", "Between 1h and 8760h (e.g. 168h = 7 days).", "Zwischen 1h und 8760h (z. B. 168h = 7 Tage).", "Entre 1h et 8760h (p. ex. 168h = 7 jours)."},
+		"settings.data.invalid":     {"Algún valor está fuera de rango.", "Some value is out of range.", "Ein Wert liegt außerhalb des zulässigen Bereichs.", "Une valeur est hors limites."},
+
+		// Campos comunes nuevos de los checks
+		"check.f.fail_threshold":      {"Fallos para darlo por caído", "Failures before marking it down", "Fehlversuche bis „ausgefallen“", "Échecs avant de le déclarer en panne"},
+		"check.f.fail_threshold.help": {"Fallos consecutivos (1–20).", "Consecutive failures (1–20).", "Aufeinanderfolgende Fehlversuche (1–20).", "Échecs consécutifs (1–20)."},
+		"check.f.degraded_after":      {"Marcar como lento a partir de", "Mark as slow above", "Als langsam markieren ab", "Marquer comme lent au-delà de"},
+		"check.f.degraded_after.help": {"Opcional, p. ej. 500ms o 2s.", "Optional, e.g. 500ms or 2s.", "Optional, z. B. 500ms oder 2s.", "Facultatif, p. ex. 500ms ou 2s."},
+		"flash.data":                  {"Ajustes de datos guardados.", "Data settings saved.", "Dateneinstellungen gespeichert.", "Paramètres des données enregistrés."},
 
 		// Ajustes generales
 		"settings.title":    {"Ajustes", "Settings", "Einstellungen", "Paramètres"},

@@ -16,6 +16,8 @@ var commonInfo = module.Info{
 		{Key: "name", Label: "check.f.name", Type: module.Text, Required: true, MaxLen: 100},
 		{Key: "group", Label: "check.f.group", Help: "check.f.group.help", Type: module.Text, MaxLen: 50},
 		{Key: "interval", Label: "check.f.interval", Help: "check.f.interval.help", Type: module.Duration, Default: "60s", Min: "10s", Max: "24h"},
+		{Key: "fail_threshold", Label: "check.f.fail_threshold", Help: "check.f.fail_threshold.help", Type: module.Int, Default: "3", Min: "1", Max: "20"},
+		{Key: "degraded_after", Label: "check.f.degraded_after", Help: "check.f.degraded_after.help", Type: module.Duration, Min: "1ms", Max: "60s"},
 		{Key: "paused", Label: "check.f.paused", Type: module.Bool},
 	},
 }
@@ -43,6 +45,7 @@ type fieldView struct {
 	Error     string // ya traducido
 	Options   []optionView
 	HasSecret bool // secreto ya guardado: vacío = conservar
+	ReadOnly  bool
 }
 
 type optionView struct {
@@ -62,7 +65,7 @@ func buildFields(l msg.Lang, info module.Info, prefix string, values module.Valu
 		}
 		fv := fieldView{
 			Name: prefix + f.Key, Label: f.Label, Help: f.Help, Type: f.Type,
-			Value: v, Required: f.Required, MaxLen: f.MaxLen, Error: errs[f.Key].In(l),
+			Value: v, Required: f.Required, MaxLen: f.MaxLen, Error: errs[f.Key].In(l), ReadOnly: f.ReadOnly,
 		}
 		switch f.Type {
 		case module.Bool:
@@ -112,6 +115,7 @@ var flashMessages = map[string]string{
 	"network":   "flash.network",
 	"cancelled": "flash.cancelled",
 	"cert":      "flash.cert",
+	"data":      "flash.data",
 }
 
 func flash(l msg.Lang, q url.Values) string {

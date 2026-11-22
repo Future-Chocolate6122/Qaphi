@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -46,6 +47,7 @@ type App struct {
 	sched    *scheduler.Scheduler
 	net      *netcfg.Manager
 	netCfg   netcfg.Config // configuración de red guardada
+	settings *settings.Service
 	token    *auth.SetupToken
 
 	// NetWindow y NetSwapDelay permiten acortar los plazos del cambio de red
@@ -113,12 +115,24 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (_ *App, err
 	if err != nil {
 		return nil, err
 	}
-	last, err := st.LastResults(ctx)
+	recent, err := st.RecentResults(ctx, state.RecentBeats)
 	if err != nil {
 		return nil, err
 	}
-	a.tracker = state.New(st, log)
-	a.tracker.Restore(checks, last)
+	open, err := st.OpenIncidents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	a.tracker = state.New(st, log, nil)
+	a.tracker.Restore(checks, recent, open)
+	a.tracker.SetAggregatesOnly(ui.Data().AggregatesOnly)
+	if err := a.tracker.RefreshUptime(ctx); err != nil {
+		return nil, err
+	}
+	if err := web.SyncHeartbeats(ctx, st); err != nil {
+		return nil, err
+	}
+	a.settings = ui
 
 	a.sched = scheduler.New(scheduler.Options{
 		Log:         log,
@@ -212,10 +226,11 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	bgCtx, stopBg := context.WithCancel(context.Background())
 	defer stopBg()
 	var bg sync.WaitGroup
-	bg.Add(3)
+	bg.Add(4)
 	go func() { defer bg.Done(); a.sched.Run(bgCtx) }()
 	go func() { defer bg.Done(); a.tracker.RunFlusher(bgCtx, a.cfg.FlushInterval) }()
 	go func() { defer bg.Done(); a.cleanSessions(bgCtx) }()
+	go func() { defer bg.Done(); a.runRetention(bgCtx) }()
 
 	scheme := a.net.Current().Scheme()
 	if ln != nil {
@@ -244,6 +259,41 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	}
 	a.log.Info("buffer flushed", "results", n)
 	return nil
+}
+
+// runRetention borra cada hora los datos que superan la retención
+// configurada: resultados en bruto, agregados por hora e incidencias
+// cerradas.
+func (a *App) runRetention(ctx context.Context) {
+	a.cleanData(ctx)
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			a.cleanData(ctx)
+		}
+	}
+}
+
+func (a *App) cleanData(ctx context.Context) {
+	d := a.settings.Data()
+	now := time.Now()
+	raw, err1 := a.store.DeleteResultsBefore(ctx, now.Add(-time.Duration(d.RawHours)*time.Hour))
+	keep := now.AddDate(0, 0, -d.AggregateDays)
+	hourly, err2 := a.store.DeleteHourlyBefore(ctx, keep)
+	inc, err3 := a.store.DeleteIncidentsBefore(ctx, keep)
+	if err := errors.Join(err1, err2, err3); err != nil {
+		if ctx.Err() == nil {
+			a.log.Warn("retention cleanup failed", "error", err)
+		}
+		return
+	}
+	if raw+hourly+inc > 0 {
+		a.log.Info("old data deleted", "results", raw, "hourly", hourly, "incidents", inc)
+	}
 }
 
 func (a *App) cleanSessions(ctx context.Context) {

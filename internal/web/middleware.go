@@ -94,8 +94,12 @@ func logRequests(log *slog.Logger) middleware {
 			start := time.Now()
 			rec := &statusRecorder{ResponseWriter: w}
 			next.ServeHTTP(rec, r)
+			path := r.URL.Path
+			if strings.HasPrefix(path, "/hb/") {
+				path = "/hb/***" // el token del heartbeat es un secreto
+			}
 			log.Debug("http request",
-				"method", r.Method, "path", r.URL.Path, "status", rec.status,
+				"method", r.Method, "path", path, "status", rec.status,
 				"duration", time.Since(start).Round(time.Microsecond), "remote", r.RemoteAddr)
 		})
 	}

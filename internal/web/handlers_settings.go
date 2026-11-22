@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/future-chocolate6122/qaphi/internal/msg"
 	"github.com/future-chocolate6122/qaphi/internal/netcfg"
@@ -18,7 +19,17 @@ type textOption struct {
 	Selected    bool
 }
 
+type dataView struct {
+	Public         bool
+	RawHours       int
+	AggregateDays  int
+	AggregatesOnly bool
+	SessionTTL     string
+	Error          string
+}
+
 type settingsView struct {
+	Data      dataView
 	Languages []textOption
 	Themes    []textOption
 	Zones     []textOption
@@ -53,7 +64,11 @@ type pendingView struct {
 func (s *Server) settingsData(r *http.Request, form *netcfg.Config, netErr string) settingsView {
 	l := s.lang(r)
 	ui := s.Settings.UI()
-	v := settingsView{NetError: netErr}
+	d := s.Settings.Data()
+	v := settingsView{NetError: netErr, Data: dataView{
+		Public: d.Public, RawHours: d.RawHours, AggregateDays: d.AggregateDays,
+		AggregatesOnly: d.AggregatesOnly, SessionTTL: shortDuration(d.SessionTTL),
+	}}
 	for _, lg := range msg.Languages() {
 		v.Languages = append(v.Languages, textOption{Value: string(lg.Code), Text: lg.Name, Selected: lg.Code == ui.Lang})
 	}
@@ -264,4 +279,45 @@ func netErrorText(l msg.Lang, err error) string {
 		return ne.Msg.In(l)
 	}
 	return err.Error()
+}
+
+// handleDataSave guarda la página pública, la retención y la duración de la
+// sesión.
+func (s *Server) handleDataSave(w http.ResponseWriter, r *http.Request) {
+	rawHours, err1 := strconv.Atoi(r.PostFormValue("raw_hours"))
+	aggDays, err2 := strconv.Atoi(r.PostFormValue("aggregate_days"))
+	ttl, err3 := time.ParseDuration(r.PostFormValue("session_ttl"))
+	d := settings.Data{
+		Public:         lastValue(r, "public") == "true",
+		RawHours:       rawHours,
+		AggregateDays:  aggDays,
+		AggregatesOnly: lastValue(r, "aggregates_only") == "true",
+		SessionTTL:     ttl,
+	}
+	if _, ok := d.Validate(); err1 != nil || err2 != nil || err3 != nil || !ok {
+		data := pageData{Title: s.T(r, "settings.title"), Active: "settings", Body: s.settingsData(r, nil, "")}
+		v := data.Body.(settingsView)
+		v.Data.Error = s.T(r, "settings.data.invalid")
+		data.Body = v
+		s.render(w, r, http.StatusUnprocessableEntity, "settings", data)
+		return
+	}
+	if err := s.Settings.SetData(r.Context(), d); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	s.Tracker.SetAggregatesOnly(d.AggregatesOnly)
+	s.Log.Info("data settings saved", "public", d.Public, "raw_hours", d.RawHours,
+		"aggregate_days", d.AggregateDays, "aggregates_only", d.AggregatesOnly, "session_ttl", d.SessionTTL.String())
+	redirect(w, r, "/admin/settings?m=data")
+}
+
+// lastValue devuelve el último valor enviado de un campo (las casillas van
+// precedidas de un campo oculto «false»).
+func lastValue(r *http.Request, name string) string {
+	vs := r.PostForm[name]
+	if len(vs) == 0 {
+		return ""
+	}
+	return vs[len(vs)-1]
 }

@@ -1,0 +1,60 @@
+{{define "c-home-banner"}}
+<section class="banner banner-{{.Body.Level}}" data-banner>
+  <h1>{{t "home.title"}}</h1>
+  <p class="summary" data-summary>{{.Body.Summary}}</p>
+</section>
+{{end}}
+
+{{define "c-home-checks"}}
+{{if .Body.Groups}}
+{{range .Body.Groups}}
+<section class="card group">
+  <h2 class="group-name">{{.Name}}</h2>
+  <ul class="monitors">
+  {{range .Rows}}
+    <li class="monitor" data-id="{{.ID}}">
+      <a class="monitor-main" href="/check/{{.ID}}">
+        <span class="pill pill-{{.UptimeLevel}}" data-field="uptime" title="{{t "uptime.title"}} {{t "uptime.24h"}}">{{.Uptime}}</span>
+        <span class="monitor-name"><strong>{{.Name}}</strong>{{if .Target}}<small class="muted target">{{.Target}}</small>{{end}}</span>
+      </a>
+      <div class="beats" data-beats aria-hidden="true"></div>
+      <div class="monitor-meta">
+        {{template "badge" .}}
+        <span class="muted small num" data-field="latency" title="{{.LastTitle}}">{{.Latency}}</span>
+      </div>
+    </li>
+  {{end}}
+  </ul>
+</section>
+{{end}}
+{{else}}
+<section class="card"><p>{{t "home.empty"}}{{if $.LoggedIn}} <a href="/admin">{{t "home.empty.admin"}}</a>{{end}}</p></section>
+{{end}}
+{{end}}
+
+{{define "c-home-incidents"}}
+<section class="card"{{if not .Body.Incidents}} hidden{{end}} data-incidents-card>
+  <h2>{{t "home.incidents"}}</h2>
+  {{template "incidents-table" .}}
+</section>
+{{end}}
+
+{{define "incidents-table"}}
+<div class="table-wrap">
+<table class="incidents">
+  <thead><tr>
+    <th>{{t "incident.check"}}</th><th>{{t "incident.start"}}</th><th>{{t "incident.duration"}}</th>{{if .Body.Full}}<th>{{t "incident.error"}}</th>{{end}}
+  </tr></thead>
+  <tbody data-incidents data-open-label="{{t "incident.open"}}">
+  {{range .Body.Incidents}}
+    <tr>
+      <td data-label="{{t "incident.check"}}"><a href="/check/{{.CheckID}}">{{.Check}}</a></td>
+      <td data-label="{{t "incident.start"}}">{{.Start}}</td>
+      <td data-label="{{t "incident.duration"}}">{{.Duration}}{{if .Open}} <span class="badge badge-down">{{t "incident.open"}}</span>{{end}}</td>
+      {{if $.Body.Full}}<td data-label="{{t "incident.error"}}" class="muted">{{.Error}}</td>{{end}}
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

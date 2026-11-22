@@ -31,6 +31,38 @@
   <div class="buttons"><button type="submit" class="primary">{{t "form.save"}}</button></div>
 </form>
 
+<form method="post" action="/admin/settings/data" class="card form" id="data">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>{{t "settings.data"}}</h2>
+  {{with .Body.Data.Error}}<p class="alert" role="alert">{{.}}</p>{{end}}
+  <div class="field">
+    <input type="hidden" name="public" value="false">
+    <label class="check"><input type="checkbox" name="public" value="true"{{if .Body.Data.Public}} checked{{end}}> {{t "settings.public"}}</label>
+    <small class="help">{{t "settings.public.help"}}</small>
+  </div>
+  <div class="field">
+    <label for="f-raw_hours">{{t "settings.raw_hours"}}</label>
+    <input id="f-raw_hours" name="raw_hours" type="number" min="1" max="720" value="{{.Body.Data.RawHours}}" inputmode="numeric" required>
+    <small class="help">{{t "settings.raw_hours.help"}}</small>
+  </div>
+  <div class="field">
+    <label for="f-aggregate_days">{{t "settings.agg_days"}}</label>
+    <input id="f-aggregate_days" name="aggregate_days" type="number" min="7" max="730" value="{{.Body.Data.AggregateDays}}" inputmode="numeric" required>
+    <small class="help">{{t "settings.agg_days.help"}}</small>
+  </div>
+  <div class="field">
+    <input type="hidden" name="aggregates_only" value="false">
+    <label class="check"><input type="checkbox" name="aggregates_only" value="true"{{if .Body.Data.AggregatesOnly}} checked{{end}}> {{t "settings.agg_only"}}</label>
+    <small class="help">{{t "settings.agg_only.help"}}</small>
+  </div>
+  <div class="field">
+    <label for="f-session_ttl">{{t "settings.session_ttl"}}</label>
+    <input id="f-session_ttl" name="session_ttl" type="text" value="{{.Body.Data.SessionTTL}}" required>
+    <small class="help">{{t "settings.session_ttl.help"}}</small>
+  </div>
+  <div class="buttons"><button type="submit" class="primary">{{t "form.save"}}</button></div>
+</form>
+
 {{if .Body.Net.Available}}
 <form method="post" action="/admin/settings/network" class="card form" id="network">
   <input type="hidden" name="csrf" value="{{.CSRF}}">

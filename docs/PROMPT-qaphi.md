@@ -308,7 +308,7 @@ La estructura puede ajustarse si hay una razón clara, explicándola.
 - Comprobación del reloj antes de registrar resultados.
 - ✅ Criterio: desde cero, configurar la contraseña, crear 3 checks y verlos actualizarse en `/home`. Tras reiniciar, los datos persisten (salvo como mucho el último intervalo de volcado). Una segunda instancia no arranca. En la NanoPi, `sudo ./qaphi install` instala y arranca el servicio, y ejecutar un binario nuevo lo actualiza conservando los datos.
 
-**Fase 2 — Ajustes, idiomas, temas y base de JavaScript** (`v0.2.0`)
+**Fase 2 — Ajustes, idiomas, temas y base de JavaScript** (`v0.2.0`) ✔
 - Logs y salida de consola en inglés.
 - Idiomas (es, en, de, fr): catálogos, selector en `/setup` y `/admin`, mensajes de resultado traducibles, formatos por idioma.
 - Temas modulares: Automático, Claro y Oscuro.
@@ -318,7 +318,7 @@ La estructura puede ajustarse si hay una razón clara, explicándola.
 - Base de JavaScript: estructura, CSP y actualización en vivo de `/home` por JSON.
 - ✅ Criterio: cambiar idioma y tema y verlos aplicados en todas las páginas; pasar a HTTPS en otro puerto y confirmar; repetir sin confirmar y comprobar que vuelve sola a la configuración anterior.
 
-**Fase 3 — Checks completos y estado** (`v0.3.0`)
+**Fase 3 — Checks completos y estado** (`v0.3.0`) ✔
 - Palabra clave, caducidad TLS, ICMP (con estado «sin permisos»), DNS, heartbeat.
 - Confirmación de N fallos, incidencias, agregados por hora, uptime 24 h / 7 d / 30 d, retención y limpieza, modo «solo agregados».
 - Componentes visuales dibujados en el navegador, grupos, ajuste de página pública con ocultación de destinos.

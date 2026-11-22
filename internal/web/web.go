@@ -38,14 +38,20 @@ var staticFS embed.FS
 // StateTracker es lo que la web necesita del estado en memoria.
 type StateTracker interface {
 	Snapshot() map[int64]state.CheckState
-	SetPaused(id int64, paused bool)
+	Get(id int64) (state.CheckState, bool)
+	SetCheck(c model.Check)
 	Remove(id int64)
+	Uptime(id int64) []float64
+	PendingResults(id int64) []model.Result
+	PendingHourly(id int64) []model.Hourly
+	SetAggregatesOnly(on bool)
 }
 
 // CheckScheduler es lo que la web necesita del planificador.
 type CheckScheduler interface {
 	Set(c model.Check)
 	Remove(id int64)
+	Trigger(id int64)
 }
 
 // Network es lo que la web necesita del gestor de red.
@@ -108,9 +114,10 @@ func New(deps Deps) (*Server, error) {
 	for _, l := range msg.Languages() {
 		lang := l.Code
 		pages, err := loadPages(templateFS, template.FuncMap{
-			"t":     func(key string) string { return msg.T(lang, key) },
-			"tf":    func(key string, args ...any) string { return msg.F(lang, key, args...) },
-			"asset": static.url,
+			"t":         func(key string) string { return msg.T(lang, key) },
+			"tf":        func(key string, args ...any) string { return msg.F(lang, key, args...) },
+			"asset":     static.url,
+			"component": func(string, any) (template.HTML, error) { return "", nil }, // se redefine por página
 		})
 		if err != nil {
 			return nil, err
@@ -132,9 +139,16 @@ func New(deps Deps) (*Server, error) {
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.Handle("POST /logout", s.requireAuth(http.HandlerFunc(s.handleLogout)))
 
-	// Página de estado (en la fase 3 podrá ser pública) y sus datos en vivo.
-	mux.Handle("GET /home", s.requireAuth(http.HandlerFunc(s.handleHome)))
-	mux.Handle("GET /home/state.json", s.requireAuth(http.HandlerFunc(s.handleHomeState)))
+	// Páginas de estado (públicas o con login, según el ajuste) y sus datos.
+	mux.Handle("GET /home", s.statusAuth(s.handleHome))
+	mux.Handle("GET /home/state.json", s.statusAuth(s.handleHomeState))
+	mux.Handle("GET /check/{id}", s.statusAuth(s.handleCheckPage))
+	mux.Handle("GET /check/{id}/data.json", s.statusAuth(s.handleCheckData))
+
+	// Pulsos de los heartbeats: siempre abiertos, autenticados por su token.
+	mux.HandleFunc("GET /hb/{token}", s.handleHeartbeat)
+	mux.HandleFunc("POST /hb/{token}", s.handleHeartbeat)
+	mux.HandleFunc("HEAD /hb/{token}", s.handleHeartbeat)
 
 	// Checks.
 	mux.Handle("GET /admin", s.requireAuth(http.HandlerFunc(s.handleAdmin)))
@@ -148,6 +162,7 @@ func New(deps Deps) (*Server, error) {
 	// Ajustes.
 	mux.Handle("GET /admin/settings", s.requireAuth(http.HandlerFunc(s.handleSettings)))
 	mux.Handle("POST /admin/settings", s.requireAuth(http.HandlerFunc(s.handleSettingsSave)))
+	mux.Handle("POST /admin/settings/data", s.requireAuth(http.HandlerFunc(s.handleDataSave)))
 	mux.Handle("POST /admin/settings/network", s.requireAuth(http.HandlerFunc(s.handleNetworkApply)))
 	mux.Handle("GET /admin/settings/network/confirm", s.requireAuth(http.HandlerFunc(s.handleNetworkConfirmForm)))
 	mux.Handle("POST /admin/settings/network/confirm", s.requireAuth(http.HandlerFunc(s.handleNetworkConfirm)))
@@ -258,7 +273,7 @@ func redirect(w http.ResponseWriter, r *http.Request, to string) {
 // independiente que define el bloque "content" y se indexa por su nombre sin
 // extensión. Así cada página puede definir sus bloques sin chocar con otras.
 func loadPages(fsys fs.FS, funcs template.FuncMap) (map[string]*template.Template, error) {
-	base, err := template.New("").Funcs(funcs).ParseFS(fsys, "templates/*.html")
+	base, err := template.New("").Funcs(funcs).ParseFS(fsys, "templates/*.html", "templates/components/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("load shared templates: %w", err)
 	}
@@ -275,6 +290,16 @@ func loadPages(fsys fs.FS, funcs template.FuncMap) (map[string]*template.Templat
 		if _, err := t.ParseFS(fsys, f); err != nil {
 			return nil, fmt.Errorf("load template %s: %w", f, err)
 		}
+		// «component» ejecuta la plantilla de un componente visual por su
+		// nombre: así las páginas recorren la lista de componentes sin
+		// conocerlos uno a uno.
+		t.Funcs(template.FuncMap{"component": func(name string, data any) (template.HTML, error) {
+			var b bytes.Buffer
+			if err := t.ExecuteTemplate(&b, name, data); err != nil {
+				return "", err
+			}
+			return template.HTML(b.String()), nil
+		}})
 		pages[strings.TrimSuffix(path.Base(f), ".html")] = t
 	}
 	return pages, nil

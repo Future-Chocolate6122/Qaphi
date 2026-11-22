@@ -10,7 +10,7 @@
 <link rel="icon" href="{{asset "favicon.svg"}}" type="image/svg+xml">
 <link rel="stylesheet" href="{{.ThemeCSS}}">
 <link rel="stylesheet" href="{{asset "style.css"}}">
-{{if .Live}}<script src="{{asset "js/live.js"}}" defer></script>{{end}}
+{{if .Live}}<script src="{{asset "js/qaphi.js"}}" defer></script>{{end}}
 </head>
 <body>
 <header class="topbar">
@@ -25,11 +25,13 @@
       <button type="submit" class="link">{{t "nav.logout"}}</button>
     </form>
   </nav>
+  {{else if .Live}}
+  <nav class="nav"><a href="/login">{{t "nav.login"}}</a></nav>
   {{else}}
   <span class="tagline">{{t "app.tagline"}}</span>
   {{end}}
 </header>
-<main class="container"{{if .Live}} data-live="{{.Live}}"{{end}}>
+<main class="container"{{if .Live}} data-live="{{.Live}}" data-lang="{{.Lang}}"{{end}}>
 {{if .Alert}}<p class="alert" role="alert">{{.Alert}}</p>{{end}}
 {{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}
 {{template "content" .}}
@@ -57,7 +59,7 @@
   {{- else if eq .Type "int"}}
   <input id="f-{{.Name}}" name="{{.Name}}" type="number" value="{{.Value}}" inputmode="numeric"{{if .Required}} required{{end}}>
   {{- else}}
-  <input id="f-{{.Name}}" name="{{.Name}}" type="text" value="{{.Value}}"{{if .MaxLen}} maxlength="{{.MaxLen}}"{{end}}{{if .Required}} required{{end}}>
+  <input id="f-{{.Name}}" name="{{.Name}}" type="text" value="{{.Value}}"{{if .MaxLen}} maxlength="{{.MaxLen}}"{{end}}{{if .Required}} required{{end}}{{if .ReadOnly}} readonly class="readonly"{{end}}>
   {{- end}}
 {{- end}}
   {{- if .Help}}<small class="help">{{t .Help}}</small>{{end}}

@@ -49,10 +49,10 @@ type fakeRecorder struct {
 	rs []model.Result
 }
 
-func (r *fakeRecorder) Record(res model.Result) state.Transition {
+func (r *fakeRecorder) Record(o state.Observation) state.Transition {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.rs = append(r.rs, res)
+	r.rs = append(r.rs, model.Result{CheckID: o.CheckID, At: o.At, OK: o.OK, Latency: o.Latency, Message: o.Message.Encode()})
 	return state.Transition{}
 }
 
@@ -284,4 +284,15 @@ func TestParadaEsperaEjecuciones(t *testing.T) {
 	if !finished.Load() {
 		t.Fatal("Run terminó sin esperar a la ejecución en curso")
 	}
+}
+
+func TestTrigger(t *testing.T) {
+	s, rec, _, _, _ := newTest(t, 0, &fakeChecker{fn: ok})
+	s.Load([]model.Check{check(1, time.Hour)}) // primera ejecución en algún momento de la próxima hora
+	time.Sleep(20 * time.Millisecond)
+	if len(rec.results(1)) > 0 {
+		t.Skip("el jitter cayó justo al principio")
+	}
+	s.Trigger(1)
+	eventually(t, "Trigger ejecuta el check ya", func() bool { return len(rec.results(1)) == 1 })
 }

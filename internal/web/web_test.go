@@ -31,15 +31,22 @@ import (
 const testPassword = "una contraseña de prueba"
 
 type fakeScheduler struct {
-	mu      sync.Mutex
-	set     []model.Check
-	removed []int64
+	mu        sync.Mutex
+	set       []model.Check
+	removed   []int64
+	triggered []int64
 }
 
 func (f *fakeScheduler) Set(c model.Check) { f.mu.Lock(); f.set = append(f.set, c); f.mu.Unlock() }
 func (f *fakeScheduler) Remove(id int64) {
 	f.mu.Lock()
 	f.removed = append(f.removed, id)
+	f.mu.Unlock()
+}
+
+func (f *fakeScheduler) Trigger(id int64) {
+	f.mu.Lock()
+	f.triggered = append(f.triggered, id)
 	f.mu.Unlock()
 }
 
@@ -73,7 +80,7 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{t: t, store: st, token: auth.NewSetupToken(), sched: &fakeScheduler{}, tracker: state.New(st, log),
+	e := &env{t: t, store: st, token: auth.NewSetupToken(), sched: &fakeScheduler{}, tracker: state.New(st, log, nil),
 		set: set, net: &fakeNetwork{cur: netcfg.Config{Port: 9077}}, lang: "es"}
 	s, err := New(Deps{
 		Log: log, Store: st, Settings: set, Admin: admin, Sessions: auth.NewSessions(st, nil),
@@ -335,7 +342,7 @@ func TestCRUDChecks(t *testing.T) {
 	if !strings.Contains(r.body, `http-equiv="refresh"`) {
 		t.Error("/home debe recargarse sola")
 	}
-	e.tracker.Record(model.Result{CheckID: c.ID, At: time.Now(), OK: true, Latency: 12 * time.Millisecond, Message: "HTTP 200"})
+	e.tracker.Record(state.Observation{CheckID: c.ID, At: time.Now(), OK: true, Latency: 12 * time.Millisecond, Message: msg.New("check.http.msg.status", 200)})
 	r = e.get("/home")
 	if !strings.Contains(r.body, "1/1 (todos up)") || !strings.Contains(r.body, "12 ms") || !strings.Contains(r.body, "Operativo") {
 		t.Errorf("/home no refleja el resultado: %.800s", r.body)
@@ -608,14 +615,15 @@ func TestTemaYZonaHoraria(t *testing.T) {
 func TestEstadoEnVivo(t *testing.T) {
 	e := newEnv(t)
 	e.setup()
-	c := model.Check{Name: "Web", Type: "tcp", Interval: time.Minute, Params: map[string]string{"host": "127.0.0.1", "port": "1", "timeout": "1s"}}
+	c := model.Check{Name: "Web", Type: "tcp", Interval: time.Minute, FailThreshold: 1, Params: map[string]string{"host": "127.0.0.1", "port": "1", "timeout": "1s"}}
 	if err := e.store.CreateCheck(context.Background(), &c); err != nil {
 		t.Fatal(err)
 	}
-	e.tracker.Record(model.Result{CheckID: c.ID, At: time.Now().Add(-5 * time.Second), OK: false,
-		Message: msg.New("check.msg.refused").Encode()})
+	e.tracker.SetCheck(c)
+	e.tracker.Record(state.Observation{CheckID: c.ID, At: time.Now().Add(-5 * time.Second), OK: false,
+		Message: msg.New("check.msg.refused")})
 	r := e.get("/home")
-	if !strings.Contains(r.body, `data-live="/home/state.json"`) || !strings.Contains(r.body, "js/live.js") || !strings.Contains(r.body, "<noscript>") {
+	if !strings.Contains(r.body, `data-live="/home/state.json"`) || !strings.Contains(r.body, "js/qaphi.js") || !strings.Contains(r.body, "<noscript>") {
 		t.Fatal("/home debe cargar la actualización en vivo con alternativa sin JavaScript")
 	}
 	if !strings.Contains(r.body, "conexión rechazada") {
@@ -628,20 +636,44 @@ func TestEstadoEnVivo(t *testing.T) {
 	var data struct {
 		Summary string `json:"summary"`
 		Level   string `json:"level"`
-		Checks  []struct {
-			ID          int64  `json:"id"`
-			Status      string `json:"status"`
-			StatusLabel string `json:"status_label"`
-			Message     string `json:"message"`
-			Last        string `json:"last"`
-		} `json:"checks"`
+		Down    int    `json:"down"`
+		Groups  []struct {
+			Name   string `json:"name"`
+			Checks []struct {
+				ID          int64  `json:"id"`
+				Target      string `json:"target"`
+				Status      string `json:"status"`
+				StatusLabel string `json:"status_label"`
+				Message     string `json:"message"`
+				Last        string `json:"last"`
+				Uptime      string `json:"uptime"`
+				Beats       []struct {
+					S string  `json:"s"`
+					H float64 `json:"h"`
+					T string  `json:"t"`
+				} `json:"beats"`
+			} `json:"checks"`
+		} `json:"groups"`
+		Incidents []struct {
+			Check string `json:"check"`
+			Open  bool   `json:"open"`
+			Error string `json:"error"`
+		} `json:"incidents"`
 	}
 	if err := json.Unmarshal([]byte(r.body), &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.Summary != "0/1 (1 caído)" || data.Level != "down" || len(data.Checks) != 1 ||
-		data.Checks[0].StatusLabel != "Caído" || data.Checks[0].Message != "conexión rechazada" || !strings.HasPrefix(data.Checks[0].Last, "hace") {
+	if data.Summary != "0/1 (1 caído)" || data.Level != "down" || data.Down != 1 || len(data.Groups) != 1 || len(data.Groups[0].Checks) != 1 {
 		t.Fatalf("datos en vivo = %+v", data)
+	}
+	ck := data.Groups[0].Checks[0]
+	if ck.StatusLabel != "Caído" || ck.Message != "conexión rechazada" || !strings.HasPrefix(ck.Last, "hace") ||
+		ck.Target != "127.0.0.1:1" || ck.Uptime != "0 %" || len(ck.Beats) != 1 || ck.Beats[0].S != "down" ||
+		!strings.Contains(ck.Beats[0].T, "conexión rechazada") {
+		t.Fatalf("check en vivo = %+v", ck)
+	}
+	if len(data.Incidents) != 1 || !data.Incidents[0].Open || data.Incidents[0].Error != "conexión rechazada" {
+		t.Fatalf("incidencias = %+v", data.Incidents)
 	}
 	// Sin sesión no hay datos.
 	e.client.Jar, _ = cookiejar.New(nil)
@@ -735,5 +767,187 @@ func TestClavesDeLasPlantillas(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// addCheck crea un check y le registra un resultado.
+func (e *env) addCheck(c model.Check, o state.Observation) model.Check {
+	e.t.Helper()
+	if err := e.store.CreateCheck(context.Background(), &c); err != nil {
+		e.t.Fatal(err)
+	}
+	e.tracker.SetCheck(c)
+	o.CheckID = c.ID
+	if o.At.IsZero() {
+		o.At = time.Now()
+	}
+	e.tracker.Record(o)
+	return c
+}
+
+func TestPaginaPublica(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	secret := "http://10.20.30.40:8080/salud"
+	c := e.addCheck(model.Check{Name: "Interno", Type: "http", Group: "Red", Interval: time.Minute, FailThreshold: 1,
+		Params: map[string]string{"url": secret, "method": "GET", "expected_status": "200", "timeout": "5s"}},
+		state.Observation{OK: false, Message: msg.New("check.msg.error", "dial tcp 10.20.30.40:8080: connect: connection refused")})
+
+	// Sin página pública: sin sesión, al login.
+	e.post("/logout", url.Values{"csrf": {e.csrfFrom("/admin")}})
+	expect(t, e.get("/home"), http.StatusSeeOther, "/login?next=%2Fhome")
+	expect(t, e.get("/check/"+itoa(c.ID)), http.StatusSeeOther, "")
+
+	// Activarla.
+	e.set.SetData(context.Background(), settings.Data{Public: true, RawHours: 48, AggregateDays: 90, SessionTTL: time.Hour})
+	for _, path := range []string{"/home", "/home/state.json", "/check/" + itoa(c.ID), "/check/" + itoa(c.ID) + "/data.json"} {
+		r := e.get(path)
+		if r.status != 200 {
+			t.Fatalf("%s: estado %d", path, r.status)
+		}
+		for _, leak := range []string{"10.20.30.40", "8080", "salud", "connection refused"} {
+			if strings.Contains(r.body, leak) {
+				t.Errorf("%s muestra %q en modo público", path, leak)
+			}
+		}
+	}
+	if r := e.get("/home"); !strings.Contains(r.body, "Interno") || !strings.Contains(r.body, "Iniciar sesión") || strings.Contains(r.body, "Cerrar sesión") {
+		t.Error("la página pública debe mostrar el nombre y el enlace de login")
+	}
+	// La administración sigue cerrada.
+	expect(t, e.get("/admin"), http.StatusSeeOther, "/login?next=%2Fadmin")
+
+	// Con sesión se ve todo.
+	csrf := e.csrfFrom("/login")
+	e.post("/login", url.Values{"csrf": {csrf}, "password": {testPassword}})
+	if r := e.get("/home/state.json"); !strings.Contains(r.body, "10.20.30.40") {
+		t.Error("con sesión deben verse los destinos")
+	}
+}
+
+func TestPaginaDeDetalle(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	c := e.addCheck(model.Check{Name: "API", Type: "tcp", Interval: time.Minute,
+		Params: map[string]string{"host": "127.0.0.1", "port": "9", "timeout": "1s"}},
+		state.Observation{OK: true, Latency: 15 * time.Millisecond, Message: msg.New("check.tcp.msg.ok")})
+	path := "/check/" + itoa(c.ID)
+	r := e.get(path)
+	for _, want := range []string{"API", "127.0.0.1:9", "data-chart", "data-heatmap", "data-ring", `data-range="7d"`, "Tiempo de respuesta", "Últimos 90 días"} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("la página de detalle no contiene %q", want)
+		}
+	}
+	for _, rng := range []string{"1h", "24h", "7d", "30d", "raro"} {
+		r := e.get(path + "/data.json?range=" + rng)
+		var d struct {
+			Range  string `json:"range"`
+			From   int64  `json:"from"`
+			To     int64  `json:"to"`
+			TZ     string `json:"tz"`
+			Points []struct {
+				V float64 `json:"v"`
+				S string  `json:"s"`
+			} `json:"points"`
+			Heatmap []struct {
+				V float64 `json:"v"`
+			} `json:"heatmap"`
+			Uptimes []struct{ Text string } `json:"uptimes"`
+		}
+		if err := json.Unmarshal([]byte(r.body), &d); err != nil {
+			t.Fatalf("%s: %v", rng, err)
+		}
+		wantRange := rng
+		if rng == "raro" {
+			wantRange = "24h"
+		}
+		if d.Range != wantRange || d.To <= d.From || d.TZ == "" || len(d.Heatmap) != 90 || len(d.Uptimes) != 3 {
+			t.Fatalf("%s: %+v", rng, d)
+		}
+		// El resultado aún no volcado aparece en todos los rangos.
+		if len(d.Points) != 1 || d.Points[0].V != 15 || d.Points[0].S != "up" {
+			t.Errorf("%s: puntos = %+v", rng, d.Points)
+		}
+		if d.Heatmap[89].V != 1 || d.Uptimes[0].Text != "100 %" {
+			t.Errorf("%s: hoy = %v, uptime = %+v", rng, d.Heatmap[89].V, d.Uptimes)
+		}
+	}
+	expect(t, e.get("/check/999"), http.StatusNotFound, "")
+	expect(t, e.get("/check/999/data.json"), http.StatusNotFound, "")
+}
+
+func TestHeartbeat(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	// El formulario genera el token y lo muestra de solo lectura.
+	r := e.get("/admin/checks/new?type=heartbeat")
+	m := regexp.MustCompile(`name="p_token" type="text" value="([A-Z2-7]{26})"[^>]*readonly`).FindStringSubmatch(r.body)
+	if m == nil {
+		t.Fatalf("el formulario no trae el token generado: %.800s", r.body)
+	}
+	csrf := e.csrfFrom("/admin")
+	expect(t, e.post("/admin/checks", url.Values{"csrf": {csrf}, "type": {"heartbeat"}, "name": {"Copia nocturna"}, "interval": {"60s"},
+		"fail_threshold": {"1"}, "p_token": {m[1]}, "p_period": {"24h"}, "p_grace": {"1h"}}), http.StatusSeeOther, "/admin?m=created")
+
+	// Pulso con el token: 200 y se pide comprobar ya.
+	var logs strings.Builder
+	e.srv.Config.Handler.(*Server).Log = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodHead} {
+		if r := e.do(method, "/hb/"+m[1], nil, nil); r.status != 200 {
+			t.Fatalf("%s /hb: %d", method, r.status)
+		}
+	}
+	if len(e.sched.triggered) != 3 {
+		t.Errorf("Trigger llamado %d veces", len(e.sched.triggered))
+	}
+	expect(t, e.get("/hb/OTROTOKENQUENOEXISTEXXXXXX"), http.StatusNotFound, "")
+	if strings.Contains(logs.String(), m[1]) {
+		t.Error("el token del heartbeat no debe aparecer en el log")
+	}
+	// Al borrar el check, el token deja de valer.
+	cs, _ := e.store.ListChecks(context.Background())
+	e.post("/admin/checks/"+itoa(cs[0].ID)+"/delete", url.Values{"csrf": {csrf}})
+	expect(t, e.get("/hb/"+m[1]), http.StatusNotFound, "")
+}
+
+func TestAjustesDeDatosWeb(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	csrf := e.csrfFrom("/admin/settings")
+	if r := e.get("/admin/settings"); !strings.Contains(r.body, "Página de estado pública") || !strings.Contains(r.body, `name="raw_hours"`) {
+		t.Fatal("faltan los ajustes de datos")
+	}
+	r := e.post("/admin/settings/data", url.Values{"csrf": {csrf}, "public": {"false", "true"}, "raw_hours": {"0"}, "aggregate_days": {"90"}, "session_ttl": {"168h"}})
+	if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "fuera de rango") {
+		t.Fatalf("valor fuera de rango: %d", r.status)
+	}
+	expect(t, e.post("/admin/settings/data", url.Values{"csrf": {csrf}, "public": {"false", "true"}, "raw_hours": {"24"},
+		"aggregate_days": {"30"}, "aggregates_only": {"false", "true"}, "session_ttl": {"12h"}}), http.StatusSeeOther, "/admin/settings?m=data")
+	d := e.set.Data()
+	if !d.Public || d.RawHours != 24 || d.AggregateDays != 30 || !d.AggregatesOnly || d.SessionTTL != 12*time.Hour {
+		t.Fatalf("ajustes guardados = %+v", d)
+	}
+	if !e.tracker.AggregatesOnly.Load() {
+		t.Error("el modo solo agregados debe aplicarse al momento")
+	}
+}
+
+func TestCamposComunesNuevos(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	csrf := e.csrfFrom("/admin")
+	form := url.Values{"csrf": {csrf}, "type": {"tcp"}, "name": {"x"}, "interval": {"60s"}, "fail_threshold": {"5"},
+		"degraded_after": {"250ms"}, "p_host": {"127.0.0.1"}, "p_port": {"22"}, "p_timeout": {"2s"}}
+	expect(t, e.post("/admin/checks", form), http.StatusSeeOther, "/admin?m=created")
+	cs, _ := e.store.ListChecks(context.Background())
+	if cs[0].FailThreshold != 5 || cs[0].DegradedAfter != 250*time.Millisecond {
+		t.Fatalf("check = %+v", cs[0])
+	}
+	if r := e.get("/admin/checks/" + itoa(cs[0].ID)); !strings.Contains(r.body, `value="250ms"`) || !strings.Contains(r.body, `value="5"`) {
+		t.Error("el formulario de edición no muestra los umbrales")
+	}
+	form.Set("fail_threshold", "0")
+	if r := e.post("/admin/checks", form); r.status != http.StatusUnprocessableEntity {
+		t.Errorf("umbral 0: %d", r.status)
 	}
 }

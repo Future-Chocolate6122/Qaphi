@@ -81,3 +81,33 @@ func TestAjustes(t *testing.T) {
 		t.Error("SystemTimezone vacío")
 	}
 }
+
+func TestAjustesDeDatos(t *testing.T) {
+	ctx := context.Background()
+	st, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "q.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	s, _ := Load(ctx, st)
+	if s.Data() != DefaultData() {
+		t.Fatalf("por defecto = %+v", s.Data())
+	}
+	bad := DefaultData()
+	bad.RawHours = 0
+	if err := s.SetData(ctx, bad); err == nil {
+		t.Error("retención de 0 h aceptada")
+	}
+	want := Data{Public: true, RawHours: 24, AggregateDays: 30, AggregatesOnly: true, SessionTTL: 12 * time.Hour}
+	if err := s.SetData(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	s2, _ := Load(ctx, st)
+	if s2.Data() != want {
+		t.Fatalf("tras recargar = %+v", s2.Data())
+	}
+	// auth lee la caducidad de sesión de la misma clave.
+	if v, _, _ := st.GetSetting(ctx, "session.ttl"); v != "12h0m0s" {
+		t.Errorf("session.ttl = %q", v)
+	}
+}

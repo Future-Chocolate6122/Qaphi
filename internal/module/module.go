@@ -55,6 +55,7 @@ type Field struct {
 	MaxLen   int       // longitud máxima para textos; 0 = valor por defecto del tipo
 	Min, Max string    // límites para Int y Duration, en su formato ("1", "500ms"); vacío = sin límite
 	Options  []Option  // opciones de un Select
+	ReadOnly bool      // se muestra pero no se edita (p. ej. un token generado)
 }
 
 // Info describe un módulo registrado.
