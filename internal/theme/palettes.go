@@ -9,6 +9,7 @@ var common = Palette{
 	"font":        `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`,
 	"mono":        `ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace`,
 	"banner-text": "#ffffff",
+	"bg-pattern":  "none",
 }
 
 // LightPalette es la paleta clara.

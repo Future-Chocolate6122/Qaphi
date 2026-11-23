@@ -7,7 +7,8 @@ html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--bg-pattern, none); /* mosaico del tema, si lo tiene */
   color: var(--text);
   font: 16px/1.5 var(--font);
 }

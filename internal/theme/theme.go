@@ -26,6 +26,7 @@ var Variables = []string{
 	"accent", "accent-text", "danger", "banner-text",
 	"status-up", "status-slow", "status-pending", "status-down", "status-unknown", "status-paused",
 	"radius", "space", "font", "mono",
+	"bg-pattern", // mosaico de fondo (url(...) de un SVG pequeño) o «none»
 }
 
 // Palette asigna un valor a cada variable.
