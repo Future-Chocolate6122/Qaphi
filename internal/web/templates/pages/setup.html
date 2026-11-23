@@ -1,5 +1,6 @@
 {{define "content"}}
 <section class="card narrow">
+  <div class="auth-mark">{{template "mark" .}}</div>
   <nav class="lang-switch" aria-label="{{t "setup.language"}}">
     {{range .Body.Languages}}<a href="/setup?lang={{.Code}}"{{if eq .Code $.Lang}} aria-current="true"{{end}} lang="{{.Code}}">{{.Name}}</a>{{end}}
   </nav>

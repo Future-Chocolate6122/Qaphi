@@ -319,9 +319,26 @@
 
   // ------------------------------------------------------------ favicon y título
 
+  // Colores fijos de la marca (los mismos que brand.go): el favicon no puede
+  // usar las variables CSS del tema.
+  var BRAND = { ring: '#2f7fd6', up: '#2e9e5b', degraded: '#d99a1e', pending: '#d99a1e', down: '#d64545', other: '#8a93a3' };
+
+  // setLogo colorea el punto del logotipo de la cabecera con el estado global.
+  function setLogo(level) {
+    var logo = $('[data-logo]');
+    if (logo && level) {
+      logo.setAttribute('data-level', level);
+    }
+  }
+
+  // setFavicon dibuja el favicon de Qaphi con el color del estado; con
+  // caídas, también el anillo en rojo.
   function setFavicon(level, down) {
-    var color = cssVar('--status-' + (level === 'degraded' ? 'slow' : level)) || '#8a93a3';
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="' + color + '"/></svg>';
+    var dot = BRAND[level] || BRAND.other;
+    var ring = level === 'down' ? BRAND.down : BRAND.ring;
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">' +
+      '<path d="M12.39 8.34A5.25 5.25 0 1 0 8.34 12.39" stroke="' + ring + '" stroke-width="2.5" stroke-linecap="round" fill="none"/>' +
+      '<circle cx="12.34" cy="12.34" r="2.5" fill="' + dot + '"/></svg>';
     var link = $('link[rel="icon"]');
     if (link) {
       link.setAttribute('href', 'data:image/svg+xml,' + encodeURIComponent(svg));
@@ -367,6 +384,7 @@
       renderBeats($('[data-beats]', li), c.beats);
     });
     renderIncidents(data.incidents || [], (data.incidents || []).some(function (i) { return 'error' in i; }));
+    setLogo(data.level);
     setFavicon(data.level, data.down);
   }
 
@@ -389,6 +407,7 @@
     renderChart($('[data-chart]'), data);
     renderHeatmap($('[data-heatmap]'), data.heatmap);
     renderIncidents(data.incidents || [], (data.incidents || []).some(function (i) { return 'error' in i; }));
+    setLogo(data.global);
     var level = data.status === 'down' ? 'down' : (data.status === 'pending' || data.status === 'degraded') ? 'degraded' : data.status;
     setFavicon(level, data.status === 'down' ? 1 : 0);
   }

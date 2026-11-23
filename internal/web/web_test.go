@@ -1075,3 +1075,62 @@ func TestOpcionesPaginaPublica(t *testing.T) {
 	}
 	expect(t, e.get("/check/"+itoa(secret.ID)), http.StatusOK, "")
 }
+
+// TestLogoYFavicon: el punto del logotipo y el favicon muestran el estado
+// global, sin darlo a quien no puede ver la página de estado; con caídas, el
+// anillo del favicon también se pone en rojo.
+func TestLogoYFavicon(t *testing.T) {
+	for level, want := range map[model.Status][2]string{
+		"":                   {brandBlue, brandBlue},
+		model.StatusUp:       {brandBlue, brandUp},
+		model.StatusDegraded: {brandBlue, brandSlow},
+		model.StatusDown:     {brandDown, brandDown},
+		model.StatusUnknown:  {brandBlue, brandOther},
+	} {
+		svg := faviconSVG(level)
+		if !strings.Contains(svg, `stroke="`+want[0]+`"`) || !strings.Contains(svg, `<circle cx="12.34" cy="12.34" r="2.5" fill="`+want[1]+`"`) {
+			t.Errorf("favicon %q: %s", level, svg)
+		}
+	}
+	if u := string(faviconURL(model.StatusDown)); !strings.HasPrefix(u, "data:image/svg+xml,") || strings.ContainsAny(u, "<>\" ") {
+		t.Errorf("favicon mal codificado: %s", u)
+	}
+
+	e := newEnv(t)
+	e.setup()
+	ctx := context.Background()
+	e.addCheck(model.Check{Name: "Web", Type: "tcp", Interval: time.Minute, FailThreshold: 1,
+		Params: map[string]string{"host": "127.0.0.1", "port": "1", "timeout": "1s"}}, state.Observation{OK: true})
+	e.addCheck(model.Check{Name: "Oculto", Type: "tcp", Interval: time.Minute, FailThreshold: 1, Hidden: true,
+		Params: map[string]string{"host": "127.0.0.1", "port": "2", "timeout": "1s"}}, state.Observation{OK: false})
+
+	// Con sesión: estado de todos (hay uno caído), en todas las páginas.
+	for _, path := range []string{"/home", "/admin", "/admin/settings"} {
+		r := e.get(path)
+		if !strings.Contains(r.body, `data-logo data-level="down"`) {
+			t.Errorf("%s: el logotipo debe mostrar el estado global", path)
+		}
+		if !strings.Contains(r.body, "%23d64545") || strings.Contains(r.body, "%232f7fd6") {
+			t.Errorf("%s: el favicon debe ir en rojo (anillo y punto) con caídas", path)
+		}
+	}
+	if r := e.get("/check/1/data.json"); !strings.Contains(r.body, `"global":"down"`) {
+		t.Errorf("el JSON del detalle debe llevar el estado global: %s", r.body)
+	}
+
+	// Sin sesión ni página pública: sin estado.
+	e.post("/logout", url.Values{"csrf": {e.csrfFrom("/admin")}})
+	r := e.get("/login")
+	if !strings.Contains(r.body, `data-logo data-level=""`) || strings.Contains(r.body, "%23d64545") || strings.Contains(r.body, "%232e9e5b") {
+		t.Error("el login no debe revelar el estado si la página no es pública")
+	}
+	if !strings.Contains(r.body, `class="logo mark"`) {
+		t.Error("el login debe mostrar el símbolo")
+	}
+
+	// Página pública: el estado de los checks visibles (el oculto no cuenta).
+	e.set.SetData(ctx, settings.Data{Public: true, RawHours: 48, AggregateDays: 90, SessionTTL: time.Hour})
+	if r := e.get("/home"); !strings.Contains(r.body, `data-logo data-level="up"`) || strings.Contains(r.body, "%23d64545") {
+		t.Error("en la página pública, el estado global no debe contar los checks ocultos")
+	}
+}

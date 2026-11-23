@@ -117,6 +117,7 @@ func New(deps Deps) (*Server, error) {
 			"t":         func(key string) string { return msg.T(lang, key) },
 			"tf":        func(key string, args ...any) string { return msg.F(lang, key, args...) },
 			"asset":     static.url,
+			"favicon":   faviconURL,
 			"component": func(string, any) (template.HTML, error) { return "", nil }, // se redefine por página
 		})
 		if err != nil {
@@ -210,13 +211,14 @@ type pageData struct {
 	Lang     msg.Lang
 	Title    string
 	LoggedIn bool
-	CSRF     string // token para los formularios de la página
-	Flash    string // mensaje de confirmación
-	Alert    string // aviso destacado (p. ej. cambio de red deshecho)
-	Active   string // sección activa del menú
-	ThemeCSS string // URL de la hoja de estilos del tema
-	Live     string // URL de datos en vivo (activa live.js)
-	Body     any    // datos propios de la página
+	CSRF     string       // token para los formularios de la página
+	Flash    string       // mensaje de confirmación
+	Alert    string       // aviso destacado (p. ej. cambio de red deshecho)
+	Active   string       // sección activa del menú
+	ThemeCSS string       // URL de la hoja de estilos del tema
+	Live     string       // URL de datos en vivo (activa qaphi.js)
+	Level    model.Status // estado global: punto del logotipo y favicon
+	Body     any          // datos propios de la página
 }
 
 // render ejecuta la plantilla en un buffer antes de escribir nada, para no
@@ -236,6 +238,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, name
 		}
 	}
 	data.ThemeCSS = s.themeURL(s.Settings.UI().Theme)
+	data.Level = s.headerLevel(r, data.LoggedIn)
 	var buf bytes.Buffer
 	if err := t.ExecuteTemplate(&buf, "layout", data); err != nil {
 		s.Log.Error("template execution failed", "template", name, "path", r.URL.Path, "error", err)

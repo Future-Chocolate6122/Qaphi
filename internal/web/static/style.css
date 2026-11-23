@@ -29,7 +29,23 @@ code, .target { font-family: var(--mono); font-size: .85em; word-break: break-al
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.brand { font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+.brand { display: inline-flex; align-items: center; color: var(--text); text-decoration: none; }
+
+/* Logotipo: monocromo (color del texto del tema) con el punto en el color del
+   estado global; sin estado (login, setup), en el acento del tema. */
+.logo { display: block; height: 26px; width: auto; }
+.logo.mark { height: 56px; }
+.logo-status { fill: var(--accent); transition: fill .4s; }
+.logo[data-level="up"] .logo-status { fill: var(--status-up); }
+.logo[data-level="degraded"] .logo-status,
+.logo[data-level="pending"] .logo-status { fill: var(--status-slow); }
+.logo[data-level="down"] .logo-status { fill: var(--status-down); }
+.logo[data-level="unknown"] .logo-status,
+.logo[data-level="noperm"] .logo-status { fill: var(--status-unknown); }
+.logo[data-level="paused"] .logo-status { fill: var(--status-paused); }
+.auth-mark { display: flex; justify-content: center; color: var(--text); margin: .25rem 0 .75rem; }
+@media (max-width: 720px) { .logo { height: 24px; } }
+@media (prefers-reduced-motion: reduce) { .logo-status { transition: none; } }
 .tagline { color: var(--muted); font-size: .9rem; }
 .nav { display: flex; gap: var(--space); align-items: center; margin-left: auto; }
 .nav a { color: var(--muted); text-decoration: none; }

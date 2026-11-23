@@ -257,22 +257,29 @@ func (s *Server) incidents(ctx context.Context, l msg.Lang, checkID int64, names
 	return out, nil
 }
 
-func (s *Server) homeData(r *http.Request, full bool) (homeView, error) {
+// visibleChecks devuelve los checks que se ven: con sesión, todos; sin
+// sesión, los que no están ocultos en la página pública.
+func (s *Server) visibleChecks(r *http.Request, full bool) ([]model.Check, error) {
 	cs, err := s.Store.ListChecks(r.Context())
+	if err != nil || full {
+		return cs, err
+	}
+	visible := cs[:0:0]
+	for _, c := range cs {
+		if !c.Hidden {
+			visible = append(visible, c)
+		}
+	}
+	return visible, nil
+}
+
+func (s *Server) homeData(r *http.Request, full bool) (homeView, error) {
+	// Los checks ocultos no se muestran ni cuentan en el resumen público.
+	cs, err := s.visibleChecks(r, full)
 	if err != nil {
 		return homeView{}, err
 	}
 	vi := s.visibility(full)
-	if !full {
-		// Los checks ocultos no se muestran ni cuentan en el resumen.
-		visible := cs[:0:0]
-		for _, c := range cs {
-			if !c.Hidden {
-				visible = append(visible, c)
-			}
-		}
-		cs = visible
-	}
 	l := s.lang(r)
 	snap := s.Tracker.Snapshot()
 	sum := state.Summarize(cs, snap)
@@ -395,8 +402,9 @@ type checkView struct {
 	Heatmap     []dayView      `json:"heatmap"`
 	Incidents   []incidentView `json:"incidents"`
 	Full        bool           `json:"-"`
-	ShowLatency bool           `json:"-"` // mostrar tiempos de respuesta
-	Links       bool           `json:"-"` // siempre: ya estamos en el detalle
+	Global      model.Status   `json:"global"` // estado global (punto del logotipo)
+	ShowLatency bool           `json:"-"`      // mostrar tiempos de respuesta
+	Links       bool           `json:"-"`      // siempre: ya estamos en el detalle
 	Components  []string       `json:"-"`
 }
 
@@ -437,6 +445,7 @@ func (s *Server) checkData(r *http.Request, full bool) (checkView, error) {
 	if vi.groups {
 		v.Group = c.Group
 	}
+	v.Global = s.headerLevel(r, full)
 	if !vi.latency {
 		v.Components = without(v.Components, "c-check-chart")
 	}

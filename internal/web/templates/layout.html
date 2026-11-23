@@ -7,14 +7,14 @@
 <meta name="referrer" content="same-origin">
 {{if .Live}}<noscript><meta http-equiv="refresh" content="30"></noscript>{{end}}
 <title>{{.Title}} · {{t "app.name"}}</title>
-<link rel="icon" href="{{asset "favicon.svg"}}" type="image/svg+xml">
+<link rel="icon" href="{{favicon .Level}}" type="image/svg+xml">
 <link rel="stylesheet" href="{{.ThemeCSS}}">
 <link rel="stylesheet" href="{{asset "style.css"}}">
 {{if .Live}}<script src="{{asset "js/qaphi.js"}}" defer></script>{{end}}
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/home">{{t "app.name"}}</a>
+  <a class="brand" href="/home">{{template "logo" .}}</a>
   {{if .LoggedIn}}
   <nav class="nav">
     <a href="/home"{{if eq .Active "home"}} aria-current="page"{{end}}>{{t "nav.home"}}</a>
@@ -38,6 +38,16 @@
 </main>
 </body>
 </html>
+{{- end}}
+
+{{/* Logotipo monocromo (color del texto del tema) con el punto de estado en
+     el color del estado global (data-level). Original en docs/brand. */}}
+{{define "logo" -}}
+<svg class="logo" data-logo data-level="{{.Level}}" viewBox="0 0 110.8 32" role="img" aria-label="{{t "app.name"}}"><title>{{t "app.name"}}</title><path d="M24.84 16.32A10.5 10.5 0 1 0 16.32 24.84" stroke="currentColor" stroke-width="5" stroke-linecap="round" fill="none"/><circle class="logo-status" cx="24.54" cy="24.54" r="4.5"/><path d="M50.3 25.3q-2 0-3.7-.7q-1.7-.8-3-2q-1.2-1.3-1.9-3q-.8-1.7-.8-3.6q0-2 .8-3.7q.7-1.6 1.9-2.9q1.3-1.3 3-2q1.7-.7 3.6-.7q2 0 3.7 .7q1.7 .7 3 2q1.3 1.3 2 3q.7 1.6 .7 3.6q0 1.9-.7 3.6q-.5 1-1.1 1.9l2.7 2.7l-2.1 2.1l-2.7-2.7q-.8 .6-1.8 1q-1.7 .7-3.6 .7zm-.1-3.3q1.8 0 3.1-.7q0-.1 0-.1l-3.1-3.1l2.1-2.1l3 3q.7-1.3 .7-3q0-1.4-.4-2.5q-.4-1.1-1.2-1.9q-.8-.8-1.8-1.2q-1.1-.5-2.4-.5q-1.6 0-2.9 .8q-1.3 .8-2.1 2.1q-.7 1.4-.7 3.2q0 1.3 .4 2.4q.5 1.2 1.2 2q.8 .8 1.8 1.2q1.1 .4 2.3 .4zm17.1 3.3q-1.6 0-3-.9q-1.4-.8-2.1-2.3q-.8-1.5-.8-3.3q0-1.8 .8-3.3q.7-1.4 2.1-2.3q1.4-.8 3-.8q1.4 0 2.4 .5q.7 .4 1.2 .9v-1.2h3.4v12.4h-3.4v-1.2q-.5 .5-1.2 .9q-1 .6-2.4 .6zm.7-3.1q1.4 0 2.2-1q.9-.9 .9-2.4q0-1-.4-1.7q-.4-.8-1.1-1.2q-.7-.4-1.6-.4q-1 0-1.7 .4q-.7 .4-1.1 1.2q-.4 .7-.4 1.7q0 1 .4 1.8q.4 .7 1.1 1.1q.7 .5 1.7 .5zm15.8 3.1q-1.3 0-2.4-.6q-.7-.3-1.1-.8v6.3h-3.4v-17.6h3.4v1.1q.5-.4 1.1-.8q1.1-.5 2.4-.5q1.7 0 3.1 .8q1.3 .9 2.1 2.3q.8 1.5 .8 3.3q0 1.8-.8 3.3q-.8 1.5-2.1 2.3q-1.4 .9-3.1 .9zm-.6-3.1q.9 0 1.6-.5q.8-.4 1.1-1.1q.4-.8 .4-1.8q0-1-.4-1.7q-.3-.8-1.1-1.2q-.7-.4-1.6-.4q-.9 0-1.6 .4q-.7 .4-1.1 1.2q-.4 .7-.4 1.7q0 1 .4 1.8q.4 .7 1.1 1.1q.7 .5 1.6 .5zm16.8 2.8v-7.1q0-1.1-.7-1.8q-.7-.7-1.8-.7q-.7 0-1.3 .3q-.5 .3-.9 .9q-.3 .6-.3 1.3v7.1h-3.3v-18.5h3.3v7.3q.5-.5 1-.8q1.1-.6 2.5-.6q1.4 0 2.5 .6q1.1 .6 1.7 1.7q.6 1.1 .6 2.5v7.8zm5.8 0v-12.4h3.3v12.4zm1.6-14.4q-.8 0-1.3-.5q-.6-.6-.6-1.4q0-.8 .6-1.3q.5-.6 1.3-.6q.9 0 1.4 .6q.5 .5 .5 1.3q0 .8-.5 1.4q-.5 .5-1.4 .5z" fill="currentColor"/></svg>
+{{- end}}
+
+{{define "mark" -}}
+<svg class="logo mark" data-level="{{.Level}}" viewBox="0 0 32 32" aria-hidden="true"><path d="M24.84 16.32A10.5 10.5 0 1 0 16.32 24.84" stroke="currentColor" stroke-width="5" stroke-linecap="round" fill="none"/><circle class="logo-status" cx="24.54" cy="24.54" r="4.5"/></svg>
 {{- end}}
 
 {{define "field" -}}
