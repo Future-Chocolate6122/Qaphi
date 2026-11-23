@@ -300,7 +300,11 @@
     list.forEach(function (i) {
       var tr = el('tr', {}, frag);
       var td = el('td', { 'data-label': heads[0] || '' }, tr);
-      el('a', { href: '/check/' + i.check_id, text: i.check }, td);
+      if (body.hasAttribute('data-nolinks')) {
+        td.textContent = i.check;
+      } else {
+        el('a', { href: '/check/' + i.check_id, text: i.check }, td);
+      }
       el('td', { 'data-label': heads[1] || '', text: i.start }, tr);
       td = el('td', { 'data-label': heads[2] || '', text: i.duration + ' ' }, tr);
       if (i.open) {

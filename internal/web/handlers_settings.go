@@ -28,15 +28,23 @@ type dataView struct {
 	Error          string
 }
 
+// checkOption es una casilla de un formulario.
+type checkOption struct {
+	Name    string
+	Label   string
+	Checked bool
+}
+
 type settingsView struct {
-	Data      dataView
-	Languages []textOption
-	Themes    []textOption
-	Zones     []textOption
-	Net       netView
-	Cert      certView
-	Pending   *pendingView
-	NetError  string
+	Data          dataView
+	PublicOptions []checkOption // qué se muestra en la página pública
+	Languages     []textOption
+	Themes        []textOption
+	Zones         []textOption
+	Net           netView
+	Cert          certView
+	Pending       *pendingView
+	NetError      string
 }
 
 type netView struct {
@@ -69,6 +77,12 @@ func (s *Server) settingsData(r *http.Request, form *netcfg.Config, netErr strin
 		Public: d.Public, RawHours: d.RawHours, AggregateDays: d.AggregateDays,
 		AggregatesOnly: d.AggregatesOnly, SessionTTL: shortDuration(d.SessionTTL),
 	}}
+	v.PublicOptions = []checkOption{
+		{Name: "show_groups", Label: msg.T(l, "settings.public.groups"), Checked: !d.HideGroups},
+		{Name: "show_latency", Label: msg.T(l, "settings.public.latency"), Checked: !d.HideLatency},
+		{Name: "show_incidents", Label: msg.T(l, "settings.public.incidents"), Checked: !d.HideIncidents},
+		{Name: "show_detail", Label: msg.T(l, "settings.public.detail"), Checked: !d.HideDetail},
+	}
 	for _, lg := range msg.Languages() {
 		v.Languages = append(v.Languages, textOption{Value: string(lg.Code), Text: lg.Name, Selected: lg.Code == ui.Lang})
 	}
@@ -289,6 +303,10 @@ func (s *Server) handleDataSave(w http.ResponseWriter, r *http.Request) {
 	ttl, err3 := time.ParseDuration(r.PostFormValue("session_ttl"))
 	d := settings.Data{
 		Public:         lastValue(r, "public") == "true",
+		HideGroups:     lastValue(r, "show_groups") == "false",
+		HideLatency:    lastValue(r, "show_latency") == "false",
+		HideIncidents:  lastValue(r, "show_incidents") == "false",
+		HideDetail:     lastValue(r, "show_detail") == "false",
 		RawHours:       rawHours,
 		AggregateDays:  aggDays,
 		AggregatesOnly: lastValue(r, "aggregates_only") == "true",
@@ -307,7 +325,8 @@ func (s *Server) handleDataSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Tracker.SetAggregatesOnly(d.AggregatesOnly)
-	s.Log.Info("data settings saved", "public", d.Public, "raw_hours", d.RawHours,
+	s.Log.Info("data settings saved", "public", d.Public, "hide_groups", d.HideGroups, "hide_latency", d.HideLatency,
+		"hide_incidents", d.HideIncidents, "hide_detail", d.HideDetail, "raw_hours", d.RawHours,
 		"aggregate_days", d.AggregateDays, "aggregates_only", d.AggregatesOnly, "session_ttl", d.SessionTTL.String())
 	redirect(w, r, "/admin/settings?m=data")
 }

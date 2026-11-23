@@ -19,6 +19,7 @@ var commonInfo = module.Info{
 		{Key: "fail_threshold", Label: "check.f.fail_threshold", Help: "check.f.fail_threshold.help", Type: module.Int, Default: "3", Min: "1", Max: "20"},
 		{Key: "degraded_after", Label: "check.f.degraded_after", Help: "check.f.degraded_after.help", Type: module.Duration, Min: "1ms", Max: "60s"},
 		{Key: "paused", Label: "check.f.paused", Type: module.Bool},
+		{Key: "public", Label: "check.f.public", Help: "check.f.public.help", Type: module.Bool, Default: "true"},
 	},
 }
 

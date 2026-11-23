@@ -163,6 +163,10 @@ func SystemTimezone() string {
 // Claves de los ajustes de datos y de la página pública (estables).
 const (
 	KeyPublic         = "page.public"
+	KeyHideGroups     = "page.hide_groups"
+	KeyHideLatency    = "page.hide_latency"
+	KeyHideIncidents  = "page.hide_incidents"
+	KeyHideDetail     = "page.hide_detail"
 	KeyRawHours       = "retention.raw_hours"
 	KeyAggregateDays  = "retention.aggregate_days"
 	KeyAggregatesOnly = "retention.aggregates_only"
@@ -184,7 +188,14 @@ const (
 
 // Data son los ajustes de la página pública, la retención y las sesiones.
 type Data struct {
-	Public         bool
+	Public bool
+	// Información que se retira de la página pública (sin sesión). Los
+	// destinos, mensajes y errores se ocultan siempre.
+	HideGroups    bool // nombres de grupo: todos los checks juntos
+	HideLatency   bool // tiempos de respuesta y gráfica
+	HideIncidents bool // historial de incidencias
+	HideDetail    bool // páginas de detalle (/check/<id>)
+
 	RawHours       int
 	AggregateDays  int
 	AggregatesOnly bool
@@ -218,10 +229,15 @@ func (s *Service) loadData(ctx context.Context) error {
 	} else if ok {
 		d.Public = v == "true"
 	}
-	if v, ok, err := get(KeyAggregatesOnly); err != nil {
-		return err
-	} else if ok {
-		d.AggregatesOnly = v == "true"
+	for key, dst := range map[string]*bool{
+		KeyAggregatesOnly: &d.AggregatesOnly, KeyHideGroups: &d.HideGroups, KeyHideLatency: &d.HideLatency,
+		KeyHideIncidents: &d.HideIncidents, KeyHideDetail: &d.HideDetail,
+	} {
+		if v, ok, err := get(key); err != nil {
+			return err
+		} else if ok {
+			*dst = v == "true"
+		}
 	}
 	if v, ok, err := get(KeyRawHours); err != nil {
 		return err
@@ -262,6 +278,10 @@ func (s *Service) SetData(ctx context.Context, d Data) error {
 	for k, v := range map[string]string{
 		KeyPublic:         strconv.FormatBool(d.Public),
 		KeyAggregatesOnly: strconv.FormatBool(d.AggregatesOnly),
+		KeyHideGroups:     strconv.FormatBool(d.HideGroups),
+		KeyHideLatency:    strconv.FormatBool(d.HideLatency),
+		KeyHideIncidents:  strconv.FormatBool(d.HideIncidents),
+		KeyHideDetail:     strconv.FormatBool(d.HideDetail),
 		KeyRawHours:       strconv.Itoa(d.RawHours),
 		KeyAggregateDays:  strconv.Itoa(d.AggregateDays),
 		KeySessionTTL:     d.SessionTTL.String(),

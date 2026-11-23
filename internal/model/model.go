@@ -21,6 +21,8 @@ type Check struct {
 	Group    string        // agrupación visual; vacío = sin grupo
 	Interval time.Duration // cada cuánto se comprueba
 	Paused   bool
+	// Hidden oculta el check en la página pública (sin sesión).
+	Hidden bool
 	// FailThreshold es el número de fallos consecutivos para darlo por caído.
 	FailThreshold int
 	// DegradedAfter marca el check como lento si la respuesta tarda más

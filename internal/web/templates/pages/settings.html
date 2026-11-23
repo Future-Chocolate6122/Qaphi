@@ -39,6 +39,14 @@
     <input type="hidden" name="public" value="false">
     <label class="check"><input type="checkbox" name="public" value="true"{{if .Body.Data.Public}} checked{{end}}> {{t "settings.public"}}</label>
     <small class="help">{{t "settings.public.help"}}</small>
+    <fieldset class="suboptions">
+      <legend>{{t "settings.public.show"}}</legend>
+      {{range .Body.PublicOptions}}
+      <input type="hidden" name="{{.Name}}" value="false">
+      <label class="check"><input type="checkbox" name="{{.Name}}" value="true"{{if .Checked}} checked{{end}}> {{.Label}}</label>
+      {{end}}
+      <small class="help">{{t "settings.public.show.help"}}</small>
+    </fieldset>
   </div>
   <div class="field">
     <label for="f-raw_hours">{{t "settings.raw_hours"}}</label>

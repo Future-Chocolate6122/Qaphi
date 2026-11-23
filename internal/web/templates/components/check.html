@@ -11,8 +11,8 @@
   </div>
   <div class="ring" data-ring data-label="{{t "uptime.title"}} {{t "uptime.24h"}}"></div>
   <dl class="stats">
-    <div class="stat"><dt>{{t "col.latency"}}</dt><dd data-field="latency">{{.Body.Latency}}</dd></div>
-    <div class="stat"><dt>{{t "detail.avg"}}</dt><dd data-field="avg">{{.Body.Avg}}</dd></div>
+    {{if .Body.ShowLatency}}<div class="stat"><dt>{{t "col.latency"}}</dt><dd data-field="latency">{{.Body.Latency}}</dd></div>
+    <div class="stat"><dt>{{t "detail.avg"}}</dt><dd data-field="avg">{{.Body.Avg}}</dd></div>{{end}}
     {{range $i, $u := .Body.Uptimes}}<div class="stat"><dt>{{t "uptime.title"}} · {{$u.Label}}</dt><dd class="uptime-{{$u.Level}}" data-uptime="{{$i}}">{{$u.Text}}</dd></div>{{end}}
     {{with .Body.Cert}}<div class="stat"><dt>{{t "detail.cert"}}</dt><dd class="uptime-{{$.Body.CertLevel}}">{{.}}</dd></div>{{end}}
   </dl>

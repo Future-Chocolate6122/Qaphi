@@ -20,14 +20,14 @@
 <div class="checks-view{{if .Body.Grid}} view-grid{{end}}" data-view-root>
 {{range .Body.Groups}}
 <section class="card group">
-  <h2 class="group-name">{{.Name}}</h2>
+  {{with .Name}}<h2 class="group-name">{{.}}</h2>{{end}}
   <ul class="monitors">
   {{range .Rows}}
     <li class="monitor is-{{.Status}}" data-id="{{.ID}}">
-      <a class="monitor-main" href="/check/{{.ID}}">
+      {{if $.Body.Links}}<a class="monitor-main" href="/check/{{.ID}}">{{else}}<div class="monitor-main">{{end}}
         <span class="pill pill-{{.UptimeLevel}}" data-field="uptime" title="{{t "uptime.title"}} {{t "uptime.24h"}}">{{.Uptime}}</span>
         <span class="monitor-name"><strong title="{{.Name}}">{{.Name}}</strong>{{if .Target}}<small class="muted target">{{.Target}}</small>{{end}}</span>
-      </a>
+      {{if $.Body.Links}}</a>{{else}}</div>{{end}}
       <div class="beats" data-beats aria-hidden="true"></div>
       <div class="monitor-meta">
         {{template "badge" .}}
@@ -57,10 +57,10 @@
   <thead><tr>
     <th>{{t "incident.check"}}</th><th>{{t "incident.start"}}</th><th>{{t "incident.duration"}}</th>{{if .Body.Full}}<th>{{t "incident.error"}}</th>{{end}}
   </tr></thead>
-  <tbody data-incidents data-open-label="{{t "incident.open"}}">
+  <tbody data-incidents data-open-label="{{t "incident.open"}}"{{if not .Body.Links}} data-nolinks{{end}}>
   {{range .Body.Incidents}}
     <tr>
-      <td data-label="{{t "incident.check"}}"><a href="/check/{{.CheckID}}">{{.Check}}</a></td>
+      <td data-label="{{t "incident.check"}}">{{if $.Body.Links}}<a href="/check/{{.CheckID}}">{{.Check}}</a>{{else}}{{.Check}}{{end}}</td>
       <td data-label="{{t "incident.start"}}">{{.Start}}</td>
       <td data-label="{{t "incident.duration"}}">{{.Duration}}{{if .Open}} <span class="badge badge-down">{{t "incident.open"}}</span>{{end}}</td>
       {{if $.Body.Full}}<td data-label="{{t "incident.error"}}" class="muted">{{.Error}}</td>{{end}}

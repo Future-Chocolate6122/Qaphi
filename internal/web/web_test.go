@@ -978,3 +978,100 @@ func TestVistaDeCuadricula(t *testing.T) {
 		}
 	}
 }
+
+// TestOpcionesPaginaPublica: checks ocultos y ajustes de qué se muestra sin
+// sesión. Todo se filtra en el servidor (también en los JSON).
+func TestOpcionesPaginaPublica(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	ctx := context.Background()
+
+	// Un check oculto creado desde el formulario (casilla desmarcada).
+	form := url.Values{"csrf": {e.csrfFrom("/admin")}, "type": {"tcp"}, "name": {"Secreto"}, "group": {"Interno"},
+		"interval": {"60s"}, "fail_threshold": {"1"}, "public": {"false"}, "p_host": {"127.0.0.1"}, "p_port": {"22"}}
+	expect(t, e.post("/admin/checks", form), http.StatusSeeOther, "/admin?m=created")
+	cs, _ := e.store.ListChecks(ctx)
+	if len(cs) != 1 || !cs[0].Hidden {
+		t.Fatalf("el check debe guardarse oculto: %+v", cs)
+	}
+	secret := cs[0]
+	e.tracker.SetCheck(secret)
+	e.tracker.Record(state.Observation{CheckID: secret.ID, At: time.Now(), OK: false, Message: msg.New("check.msg.refused")})
+	if r := e.get("/admin/checks/" + itoa(secret.ID)); !strings.Contains(r.body, `name="public" value="true">`) {
+		t.Error("al editar, la casilla de visibilidad debe salir desmarcada")
+	}
+	if r := e.get("/admin"); !strings.Contains(r.body, "no público") {
+		t.Error("la lista de checks debe marcar los ocultos")
+	}
+
+	web := e.addCheck(model.Check{Name: "Web", Type: "tcp", Group: "Servicios", Interval: time.Minute, FailThreshold: 1,
+		Params: map[string]string{"host": "127.0.0.1", "port": "1", "timeout": "1s"}},
+		state.Observation{OK: true, Latency: 42 * time.Millisecond})
+	e.tracker.Record(state.Observation{CheckID: web.ID, At: time.Now(), OK: false, Message: msg.New("check.msg.refused")})
+	e.tracker.Record(state.Observation{CheckID: web.ID, At: time.Now(), OK: true, Latency: 42 * time.Millisecond})
+
+	e.post("/logout", url.Values{"csrf": {e.csrfFrom("/admin")}})
+	public := func(d settings.Data) {
+		d.Public, d.RawHours, d.AggregateDays, d.SessionTTL = true, 48, 90, time.Hour
+		if err := e.set.SetData(ctx, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Por defecto: todo menos el check oculto.
+	public(settings.Data{})
+	home, js := e.get("/home"), e.get("/home/state.json")
+	for _, r := range []resp{home, js} {
+		if strings.Contains(r.body, "Secreto") || strings.Contains(r.body, "Interno") {
+			t.Errorf("el check oculto no debe aparecer:\n%s", r.body)
+		}
+	}
+	for _, want := range []string{"Servicios", "42 ms", `href="/check/` + itoa(web.ID), "1/1"} {
+		if !strings.Contains(home.body, want) {
+			t.Errorf("/home debe mostrar %q", want)
+		}
+	}
+	if !strings.Contains(js.body, `"incidents":[{`) || !strings.Contains(js.body, `"links":true`) {
+		t.Errorf("deben verse las incidencias del check visible: %s", js.body)
+	}
+	expect(t, e.get("/check/"+itoa(secret.ID)), http.StatusSeeOther, "/login?next=%2Fcheck%2F"+itoa(secret.ID))
+	expect(t, e.get("/check/"+itoa(secret.ID)+"/data.json"), http.StatusNotFound, "")
+	if r := e.get("/check/" + itoa(web.ID)); r.status != 200 || !strings.Contains(r.body, "data-chart") {
+		t.Errorf("el detalle debe verse con su gráfica: %d", r.status)
+	}
+
+	// Todo desactivado.
+	public(settings.Data{HideGroups: true, HideLatency: true, HideIncidents: true, HideDetail: true})
+	home, js = e.get("/home"), e.get("/home/state.json")
+	for _, r := range []resp{home, js} {
+		for _, leak := range []string{"Servicios", "42 ms", `href="/check/`, "group-name", "Sin grupo"} {
+			if strings.Contains(r.body, leak) {
+				t.Errorf("con todo oculto no debe aparecer %q", leak)
+			}
+		}
+	}
+	if strings.Contains(home.body, "data-incidents") || !strings.Contains(js.body, `"incidents":null`) ||
+		!strings.Contains(js.body, `"links":false`) || !strings.Contains(js.body, `"latency":""`) {
+		t.Errorf("incidencias, enlaces y tiempos deben retirarse: %s", js.body)
+	}
+	expect(t, e.get("/check/"+itoa(web.ID)), http.StatusSeeOther, "/login?next=%2Fcheck%2F"+itoa(web.ID))
+	expect(t, e.get("/check/"+itoa(web.ID)+"/data.json"), http.StatusNotFound, "")
+
+	// Solo el detalle permitido: sin gráfica, tiempos ni incidencias.
+	public(settings.Data{HideLatency: true, HideIncidents: true})
+	d := e.get("/check/" + itoa(web.ID) + "/data.json")
+	if d.status != 200 || strings.Contains(d.body, "42 ms") || !strings.Contains(d.body, `"points":null`) ||
+		!strings.Contains(d.body, `"incidents":null`) || !strings.Contains(d.body, `"avg":""`) {
+		t.Errorf("detalle sin tiempos ni incidencias: %s", d.body)
+	}
+	if r := e.get("/check/" + itoa(web.ID)); strings.Contains(r.body, "data-chart") || strings.Contains(r.body, `data-field="avg"`) {
+		t.Error("la página de detalle no debe incluir la gráfica ni los tiempos")
+	}
+
+	// Con sesión se ve todo, incluido el check oculto.
+	e.post("/login", url.Values{"csrf": {e.csrfFrom("/login")}, "password": {testPassword}})
+	if r := e.get("/home"); !strings.Contains(r.body, "Secreto") || !strings.Contains(r.body, "42 ms") || !strings.Contains(r.body, "Servicios") {
+		t.Error("con sesión debe verse todo")
+	}
+	expect(t, e.get("/check/"+itoa(secret.ID)), http.StatusOK, "")
+}

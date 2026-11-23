@@ -36,6 +36,28 @@ func (s *Server) statusAuth(next func(w http.ResponseWriter, r *http.Request, fu
 	})
 }
 
+// vis decide qué información se muestra: con sesión, todo; sin sesión, lo
+// que permitan los ajustes de la página pública. Los destinos, mensajes y
+// errores se ocultan siempre sin sesión.
+type vis struct {
+	full      bool // con sesión
+	groups    bool // nombres de grupo
+	latency   bool // tiempos de respuesta y gráfica
+	incidents bool // historial de incidencias
+	detail    bool // páginas de detalle
+}
+
+func (s *Server) visibility(full bool) vis {
+	if full {
+		return vis{full: true, groups: true, latency: true, incidents: true, detail: true}
+	}
+	d := s.Settings.Data()
+	return vis{groups: !d.HideGroups, latency: !d.HideLatency, incidents: !d.HideIncidents, detail: !d.HideDetail}
+}
+
+// errNotPublic: el check o su detalle no se muestran sin sesión.
+var errNotPublic = errors.New("not public")
+
 // ---------------------------------------------------------------- vistas
 
 type beatView struct {
@@ -51,6 +73,7 @@ type rowView struct {
 	TypeName    string       `json:"-"` // clave de texto
 	Group       string       `json:"group,omitempty"`
 	Interval    string       `json:"interval,omitempty"`
+	Hidden      bool         `json:"-"` // oculto en la página pública
 	Status      model.Status `json:"status"`
 	StatusLabel string       `json:"status_label"`
 	Latency     string       `json:"latency"`
@@ -83,7 +106,8 @@ type homeView struct {
 	Groups     []groupView    `json:"groups"`
 	Incidents  []incidentView `json:"incidents"`
 	Full       bool           `json:"-"`
-	Grid       bool           `json:"-"` // vista de cuadrícula (cookie del visitante)
+	Grid       bool           `json:"-"`     // vista de cuadrícula (cookie del visitante)
+	Links      bool           `json:"links"` // enlazar al detalle de cada check
 	Components []string       `json:"-"`
 }
 
@@ -125,7 +149,7 @@ func uptimeLevel(v float64) string {
 // beats prepara la barra de pulsos: la altura de cada barra es proporcional
 // al tiempo de respuesta (respecto al máximo de la serie); las caídas, a
 // altura completa.
-func (s *Server) beats(l msg.Lang, rs []model.Result, full bool) []beatView {
+func (s *Server) beats(l msg.Lang, rs []model.Result, v vis) []beatView {
 	loc := s.Settings.Location()
 	var maxLat time.Duration
 	for _, r := range rs {
@@ -136,14 +160,14 @@ func (s *Server) beats(l msg.Lang, rs []model.Result, full bool) []beatView {
 	out := make([]beatView, 0, len(rs))
 	for _, r := range rs {
 		b := beatView{S: r.State, H: 1}
-		if r.OK && maxLat > 0 {
+		if r.OK && maxLat > 0 && v.latency {
 			b.H = 0.35 + 0.65*float64(r.Latency)/float64(maxLat)
 		}
 		detail := msg.T(l, "status."+string(r.State))
-		if r.OK {
+		if r.OK && v.latency {
 			detail = formatLatency(l, r.Latency)
 		}
-		if full {
+		if v.full {
 			if m := msg.Decode(r.Message).In(l); m != "" {
 				detail += " · " + m
 			}
@@ -155,14 +179,14 @@ func (s *Server) beats(l msg.Lang, rs []model.Result, full bool) []beatView {
 }
 
 // row construye la fila de un check.
-func (s *Server) row(l msg.Lang, c model.Check, st state.CheckState, full bool) rowView {
+func (s *Server) row(l msg.Lang, c model.Check, st state.CheckState, v vis) rowView {
 	row := rowView{
-		ID: c.ID, Name: c.Name, TypeName: c.Type,
+		ID: c.ID, Name: c.Name, TypeName: c.Type, Hidden: c.Hidden,
 		Status: model.StatusUnknown, Latency: "—", Last: msg.T(l, "time.never"),
 	}
 	if e, ok := checks.Registry.Lookup(c.Type); ok {
 		row.TypeName = e.Info.Name
-		if full {
+		if v.full {
 			row.Target = e.Impl.Target(c.Params)
 		}
 	}
@@ -171,9 +195,12 @@ func (s *Server) row(l msg.Lang, c model.Check, st state.CheckState, full bool) 
 		if st.Last.OK {
 			row.Latency = formatLatency(l, st.Last.Latency)
 		}
+		if !v.latency {
+			row.Latency = ""
+		}
 		row.Last = ago(l, s.Now(), st.Last.At)
 		row.LastTitle = formatDateTime(l, s.Settings.Location(), st.Last.At)
-		if full {
+		if v.full {
 			row.Message = msg.Decode(st.Last.Message).In(l)
 		}
 	}
@@ -186,7 +213,7 @@ func (s *Server) row(l msg.Lang, c model.Check, st state.CheckState, full bool) 
 	row.StatusLabel = msg.T(l, "status."+string(row.Status))
 	up := s.Tracker.Uptime(c.ID)
 	row.Uptime, row.UptimeLevel = uptimeText(l, up[0]), uptimeLevel(up[0])
-	row.Beats = s.beats(l, st.Recent, full)
+	row.Beats = s.beats(l, st.Recent, v)
 	return row
 }
 
@@ -235,10 +262,25 @@ func (s *Server) homeData(r *http.Request, full bool) (homeView, error) {
 	if err != nil {
 		return homeView{}, err
 	}
+	vi := s.visibility(full)
+	if !full {
+		// Los checks ocultos no se muestran ni cuentan en el resumen.
+		visible := cs[:0:0]
+		for _, c := range cs {
+			if !c.Hidden {
+				visible = append(visible, c)
+			}
+		}
+		cs = visible
+	}
 	l := s.lang(r)
 	snap := s.Tracker.Snapshot()
 	sum := state.Summarize(cs, snap)
-	v := homeView{Summary: sum.In(l), Level: sum.Level(), Down: sum.Down, Full: full, Components: pageComponents("home")}
+	v := homeView{Summary: sum.In(l), Level: sum.Level(), Down: sum.Down, Full: full, Links: vi.detail,
+		Components: pageComponents("home")}
+	if !vi.incidents {
+		v.Components = without(v.Components, "c-home-incidents")
+	}
 	if c, err := r.Cookie(viewCookie); err == nil && c.Value == "grid" {
 		v.Grid = true
 	}
@@ -248,7 +290,11 @@ func (s *Server) homeData(r *http.Request, full bool) (homeView, error) {
 	names := map[int64]string{}
 	for _, c := range cs {
 		names[c.ID] = c.Name
-		byGroup[c.Group] = append(byGroup[c.Group], s.row(l, c, snap[c.ID], full))
+		g := c.Group
+		if !vi.groups {
+			g = ""
+		}
+		byGroup[g] = append(byGroup[g], s.row(l, c, snap[c.ID], vi))
 	}
 	groups := make([]string, 0, len(byGroup))
 	for g := range byGroup {
@@ -262,13 +308,15 @@ func (s *Server) homeData(r *http.Request, full bool) (homeView, error) {
 	})
 	for _, g := range groups {
 		name := g
-		if name == "" {
+		if name == "" && vi.groups {
 			name = msg.T(l, "group.none")
 		}
 		v.Groups = append(v.Groups, groupView{Name: name, Rows: byGroup[g]})
 	}
-	if v.Incidents, err = s.incidents(r.Context(), l, 0, names, full); err != nil {
-		return homeView{}, err
+	if vi.incidents {
+		if v.Incidents, err = s.incidents(r.Context(), l, 0, names, full); err != nil {
+			return homeView{}, err
+		}
 	}
 	return v, nil
 }
@@ -333,21 +381,34 @@ type rangeView struct {
 
 type checkView struct {
 	rowView
-	Uptimes    []uptimeView   `json:"uptimes"`
-	Cert       string         `json:"cert,omitempty"`
-	CertLevel  string         `json:"cert_level,omitempty"`
-	Range      string         `json:"range"`
-	From       int64          `json:"from"` // inicio del rango (ms)
-	To         int64          `json:"to"`   // fin del rango (ms)
-	TZ         string         `json:"tz"`   // zona horaria IANA para las etiquetas de la gráfica
-	Lang       msg.Lang       `json:"lang"`
-	Ranges     []rangeView    `json:"-"`
-	Avg        string         `json:"avg"`
-	Points     []pointView    `json:"points"`
-	Heatmap    []dayView      `json:"heatmap"`
-	Incidents  []incidentView `json:"incidents"`
-	Full       bool           `json:"-"`
-	Components []string       `json:"-"`
+	Uptimes     []uptimeView   `json:"uptimes"`
+	Cert        string         `json:"cert,omitempty"`
+	CertLevel   string         `json:"cert_level,omitempty"`
+	Range       string         `json:"range"`
+	From        int64          `json:"from"` // inicio del rango (ms)
+	To          int64          `json:"to"`   // fin del rango (ms)
+	TZ          string         `json:"tz"`   // zona horaria IANA para las etiquetas de la gráfica
+	Lang        msg.Lang       `json:"lang"`
+	Ranges      []rangeView    `json:"-"`
+	Avg         string         `json:"avg"`
+	Points      []pointView    `json:"points"`
+	Heatmap     []dayView      `json:"heatmap"`
+	Incidents   []incidentView `json:"incidents"`
+	Full        bool           `json:"-"`
+	ShowLatency bool           `json:"-"` // mostrar tiempos de respuesta
+	Links       bool           `json:"-"` // siempre: ya estamos en el detalle
+	Components  []string       `json:"-"`
+}
+
+// without devuelve list sin el elemento name.
+func without(list []string, name string) []string {
+	out := list[:0:0]
+	for _, x := range list {
+		if x != name {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // Rangos de la gráfica.
@@ -365,10 +426,23 @@ func (s *Server) checkData(r *http.Request, full bool) (checkView, error) {
 	if err != nil {
 		return checkView{}, err
 	}
+	vi := s.visibility(full)
+	if !full && (c.Hidden || !vi.detail) {
+		return checkView{}, errNotPublic
+	}
 	l := s.lang(r)
 	st, _ := s.Tracker.Get(c.ID)
-	v := checkView{rowView: s.row(l, c, st, full), Full: full, Components: pageComponents("check")}
-	v.Group = c.Group
+	v := checkView{rowView: s.row(l, c, st, vi), Full: full, ShowLatency: vi.latency, Links: true,
+		Components: pageComponents("check")}
+	if vi.groups {
+		v.Group = c.Group
+	}
+	if !vi.latency {
+		v.Components = without(v.Components, "c-check-chart")
+	}
+	if !vi.incidents {
+		v.Components = without(v.Components, "c-check-incidents")
+	}
 	v.Interval = msg.F(l, "detail.interval", shortDuration(c.Interval))
 	for i, up := range s.Tracker.Uptime(c.ID) {
 		key := []string{"uptime.24h", "uptime.7d", "uptime.30d"}[i]
@@ -412,14 +486,18 @@ func (s *Server) checkData(r *http.Request, full bool) (checkView, error) {
 	if v.TZ == "" {
 		v.TZ = settings.SystemTimezone()
 	}
-	if v.Points, v.Avg, err = s.chart(r.Context(), l, c, st, v.Range); err != nil {
-		return checkView{}, err
+	if vi.latency {
+		if v.Points, v.Avg, err = s.chart(r.Context(), l, c, st, v.Range); err != nil {
+			return checkView{}, err
+		}
 	}
 	if v.Heatmap, err = s.heatmap(r.Context(), l, c); err != nil {
 		return checkView{}, err
 	}
-	if v.Incidents, err = s.incidents(r.Context(), l, c.ID, map[int64]string{c.ID: c.Name}, full); err != nil {
-		return checkView{}, err
+	if vi.incidents {
+		if v.Incidents, err = s.incidents(r.Context(), l, c.ID, map[int64]string{c.ID: c.Name}, full); err != nil {
+			return checkView{}, err
+		}
 	}
 	return v, nil
 }
@@ -634,6 +712,10 @@ func (s *Server) heatmap(ctx context.Context, l msg.Lang, c model.Check) ([]dayV
 
 func (s *Server) handleCheckPage(w http.ResponseWriter, r *http.Request, full bool) {
 	v, err := s.checkData(r, full)
+	if errors.Is(err, errNotPublic) {
+		redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()))
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		s.renderError(w, r, http.StatusNotFound, "http.notfound")
 		return
@@ -649,7 +731,7 @@ func (s *Server) handleCheckPage(w http.ResponseWriter, r *http.Request, full bo
 
 func (s *Server) handleCheckData(w http.ResponseWriter, r *http.Request, full bool) {
 	v, err := s.checkData(r, full)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, errNotPublic) {
 		http.NotFound(w, r)
 		return
 	}

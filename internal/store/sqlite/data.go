@@ -15,7 +15,7 @@ import (
 
 // ---------------------------------------------------------------- checks
 
-const checkColumns = `id, name, type, group_name, interval_s, paused, fail_threshold, degraded_ms, params, created_at, updated_at`
+const checkColumns = `id, name, type, group_name, interval_s, paused, hidden, fail_threshold, degraded_ms, params, created_at, updated_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -23,16 +23,17 @@ func scanCheck(sc scanner) (model.Check, error) {
 	var (
 		c                    model.Check
 		intervalS            int64
-		paused               int64
+		paused, hidden       int64
 		degradedMs           int64
 		params               string
 		createdAt, updatedAt int64
 	)
-	if err := sc.Scan(&c.ID, &c.Name, &c.Type, &c.Group, &intervalS, &paused, &c.FailThreshold, &degradedMs, &params, &createdAt, &updatedAt); err != nil {
+	if err := sc.Scan(&c.ID, &c.Name, &c.Type, &c.Group, &intervalS, &paused, &hidden, &c.FailThreshold, &degradedMs, &params, &createdAt, &updatedAt); err != nil {
 		return model.Check{}, err
 	}
 	c.Interval = time.Duration(intervalS) * time.Second
 	c.Paused = paused != 0
+	c.Hidden = hidden != 0
 	c.DegradedAfter = time.Duration(degradedMs) * time.Millisecond
 	c.CreatedAt = time.Unix(createdAt, 0)
 	c.UpdatedAt = time.Unix(updatedAt, 0)
@@ -94,9 +95,9 @@ func (s *Store) CreateCheck(ctx context.Context, c *model.Check) error {
 	}
 	now := time.Now()
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO checks (name, type, group_name, interval_s, paused, fail_threshold, degraded_ms, params, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.Name, c.Type, c.Group, intervalSeconds(c.Interval), boolInt(c.Paused), c.Threshold(), c.DegradedAfter.Milliseconds(),
+		INSERT INTO checks (name, type, group_name, interval_s, paused, hidden, fail_threshold, degraded_ms, params, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.Name, c.Type, c.Group, intervalSeconds(c.Interval), boolInt(c.Paused), boolInt(c.Hidden), c.Threshold(), c.DegradedAfter.Milliseconds(),
 		params, now.Unix(), now.Unix())
 	if err != nil {
 		return fmt.Errorf("create check: %w", err)
@@ -116,10 +117,10 @@ func (s *Store) UpdateCheck(ctx context.Context, c *model.Check) error {
 	}
 	now := time.Now().Unix()
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE checks SET name = ?, type = ?, group_name = ?, interval_s = ?, paused = ?, fail_threshold = ?, degraded_ms = ?,
-		params = ?, updated_at = ?
+		UPDATE checks SET name = ?, type = ?, group_name = ?, interval_s = ?, paused = ?, hidden = ?, fail_threshold = ?,
+		degraded_ms = ?, params = ?, updated_at = ?
 		WHERE id = ?`,
-		c.Name, c.Type, c.Group, intervalSeconds(c.Interval), boolInt(c.Paused), c.Threshold(), c.DegradedAfter.Milliseconds(),
+		c.Name, c.Type, c.Group, intervalSeconds(c.Interval), boolInt(c.Paused), boolInt(c.Hidden), c.Threshold(), c.DegradedAfter.Milliseconds(),
 		params, now, c.ID)
 	if err != nil {
 		return fmt.Errorf("update check %d: %w", c.ID, err)

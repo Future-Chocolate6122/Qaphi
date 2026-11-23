@@ -36,7 +36,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	snap := s.Tracker.Snapshot()
 	rows := make([]rowView, 0, len(cs))
 	for _, c := range cs {
-		row := s.row(l, c, snap[c.ID], true)
+		row := s.row(l, c, snap[c.ID], s.visibility(true))
 		row.Beats = nil
 		row.Group = c.Group
 		row.Interval = shortDuration(c.Interval)
@@ -108,6 +108,7 @@ func (s *Server) parseCheck(r *http.Request, e module.Entry[checks.Checker], sav
 		Group:         common.String("group"),
 		Interval:      common.Duration("interval"),
 		Paused:        common.Bool("paused"),
+		Hidden:        !common.Bool("public"),
 		FailThreshold: int(common.Int64("fail_threshold")),
 		DegradedAfter: common.Duration("degraded_after"),
 		Type:          e.Info.ID,
@@ -171,6 +172,7 @@ func (s *Server) handleCheckEdit(w http.ResponseWriter, r *http.Request) {
 	l := s.lang(r)
 	common := module.Values{
 		"name": c.Name, "group": c.Group, "interval": c.Interval.String(), "paused": strconv.FormatBool(c.Paused),
+		"public":         strconv.FormatBool(!c.Hidden),
 		"fail_threshold": strconv.Itoa(c.Threshold()), "degraded_after": "",
 	}
 	if c.DegradedAfter > 0 {
