@@ -68,6 +68,7 @@ Windows y macOS, varios usuarios o roles (**un único usuario y contraseña, dec
 ## Diseño visual (páginas de estado)
 El servidor entrega los datos en JSON y **el navegador dibuja** con JavaScript; objetivo: un acabado tipo Uptime Kuma o mejor. `/home` se actualiza en vivo pidiendo un JSON cada pocos segundos.
 - **Barras:** altura proporcional al tiempo de respuesta · barras agregadas con proporción de fallos apilada · verde, ámbar (lento) y rojo · mantenimiento con rayado diagonal · marcadores de incidencia · barras antiguas más tenues · la última «late» (respetando `prefers-reduced-motion`) · tooltips.
+- **Vista de `/home`:** selector con iconos «lista / cuadrícula» que cambia todos los grupos a la vez; por defecto, lista. La elección se guarda en una cookie del visitante (`qaphi_view`) y el servidor pinta la página ya con esa vista. En cuadrícula, cada check es una tarjeta con franja del color del estado, nombre, mini barra de pulsos, disponibilidad 24 h y tiempo de respuesta. Sin JavaScript no hay selector y se ve la lista.
 - **Página:** banner de estado global · favicon que cambia de color según el estado y contador en el título · anillo de uptime · selector de rango 1 h / 24 h / 7 d / 30 d · mapa de calor de 90 días en el detalle.
 - Temas (claro, oscuro, automático) y diseño apto para móvil.
 - Cada elemento es un `Component` del sistema modular.

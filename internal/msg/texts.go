@@ -81,6 +81,9 @@ func init() {
 		"home.empty":       {"Todavía no hay checks configurados.", "No checks configured yet.", "Noch keine Checks eingerichtet.", "Aucun check configuré pour l’instant."},
 		"home.empty.admin": {"Créalos en Checks.", "Create them under Checks.", "Legen Sie sie unter Checks an.", "Créez-les dans Checks."},
 		"home.live":        {"Se actualiza automáticamente.", "Updates automatically.", "Wird automatisch aktualisiert.", "Mise à jour automatique."},
+		"home.view":        {"Vista", "View", "Ansicht", "Affichage"},
+		"home.view.list":   {"Vista de lista", "List view", "Listenansicht", "Vue en liste"},
+		"home.view.grid":   {"Vista de cuadrícula", "Grid view", "Rasteransicht", "Vue en grille"},
 
 		// Resumen global: «3/4 (1 caído)»
 		"summary.format":    {"%d/%d (%s)", "%d/%d (%s)", "%d/%d (%s)", "%d/%d (%s)"},

@@ -83,8 +83,13 @@ type homeView struct {
 	Groups     []groupView    `json:"groups"`
 	Incidents  []incidentView `json:"incidents"`
 	Full       bool           `json:"-"`
+	Grid       bool           `json:"-"` // vista de cuadrícula (cookie del visitante)
 	Components []string       `json:"-"`
 }
+
+// viewCookie guarda en el navegador la vista elegida en /home («list» o
+// «grid»). No es un dato sensible: solo decide cómo se pinta la página.
+const viewCookie = "qaphi_view"
 
 // uptimeText formatea un uptime (fracción) según el idioma: «99,95 %».
 func uptimeText(l msg.Lang, v float64) string {
@@ -234,6 +239,9 @@ func (s *Server) homeData(r *http.Request, full bool) (homeView, error) {
 	snap := s.Tracker.Snapshot()
 	sum := state.Summarize(cs, snap)
 	v := homeView{Summary: sum.In(l), Level: sum.Level(), Down: sum.Down, Full: full, Components: pageComponents("home")}
+	if c, err := r.Cookie(viewCookie); err == nil && c.Value == "grid" {
+		v.Grid = true
+	}
 
 	// Grupos en orden alfabético; «sin grupo» al final.
 	byGroup := map[string][]rowView{}

@@ -327,3 +327,65 @@ table.incidents { width: 100%; border-collapse: collapse; }
   .beat-last { animation: none; }
   .ring-value { transition: none; }
 }
+
+/* Selector de vista de /home (lista o cuadrícula) */
+.view-bar { display: flex; justify-content: flex-end; }
+.view-bar[hidden] { display: none; }
+.segmented {
+  display: inline-flex;
+  border: 2px solid var(--border);
+  border-radius: calc(var(--radius) * .8);
+  overflow: hidden;
+  background: var(--surface);
+}
+.segmented button {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: .3rem .75rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.segmented button + button { border-left: 2px solid var(--border); }
+.segmented button:hover { color: var(--text); }
+.segmented button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.segmented button:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+
+/* Vista de cuadrícula: la misma estructura que la lista, en tarjetas */
+.view-grid .monitors {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  gap: .6rem;
+}
+.view-grid .monitor {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .45rem .5rem;
+  padding: .6rem .7rem .6rem .95rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * .8);
+  background: var(--bg);
+  box-shadow: inset 4px 0 0 var(--status-unknown);
+}
+.view-grid .monitor:first-child { border-top: 1px solid var(--border); }
+/* El enlace deja de ser una caja: nombre y disponibilidad se colocan en la
+   rejilla de la tarjeta (siguen siendo parte del enlace). */
+.view-grid .monitor-main { display: contents; }
+.view-grid .monitor-name { grid-column: 1 / -1; grid-row: 1; }
+.view-grid .monitor-name strong { color: var(--text); }
+.view-grid .monitor-name .target,
+.view-grid .monitor-meta .badge { display: none; }
+.view-grid .monitor .beats { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; height: 20px; gap: 2px; }
+.view-grid .monitor .beat { width: 5px; }
+.view-grid .monitor .pill { grid-column: 1; grid-row: 3; justify-self: start; min-width: 0; font-size: .72rem; padding: .1rem .45rem; }
+.view-grid .monitor-meta { grid-column: 2; grid-row: 3; min-width: 0; justify-content: center; }
+.view-grid .is-up { box-shadow: inset 4px 0 0 var(--status-up); }
+.view-grid .is-degraded { box-shadow: inset 4px 0 0 var(--status-slow); }
+.view-grid .is-pending { box-shadow: inset 4px 0 0 var(--status-pending); }
+.view-grid .is-down { box-shadow: inset 4px 0 0 var(--status-down); }
+.view-grid .is-paused { box-shadow: inset 4px 0 0 var(--status-paused); }
+@media (max-width: 720px) {
+  .view-grid .monitors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

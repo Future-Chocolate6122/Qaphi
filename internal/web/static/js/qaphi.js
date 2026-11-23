@@ -69,7 +69,8 @@
       return;
     }
     var width = box.clientWidth || 300;
-    var step = box.classList.contains('beats-lg') ? 12 : 9; // ancho + hueco
+    // Ancho + hueco de cada barra (como en style.css).
+    var step = box.classList.contains('beats-lg') ? 12 : (box.closest('.view-grid') ? 7 : 9);
     var max = Math.max(1, Math.floor(width / step));
     var list = (beats || []).slice(-max);
     var frag = document.createDocumentFragment();
@@ -351,6 +352,7 @@
         location.reload();
         return;
       }
+      li.className = 'monitor is-' + c.status;
       updateBadge($('[data-field="status"]', li), c.status, c.status_label);
       setText($('[data-field="latency"]', li), c.latency);
       var pill = $('[data-field="uptime"]', li);
@@ -436,6 +438,27 @@
       tick();
     });
   });
+
+  // Selector de vista de /home (lista o cuadrícula). La elección se guarda en
+  // una cookie para que el servidor pinte la página ya con esa vista.
+  var viewRoot = $('[data-view-root]');
+  var viewSwitch = $('[data-view-switch]');
+  if (viewRoot && viewSwitch) {
+    viewSwitch.hidden = false;
+    $$('[data-view]', viewSwitch).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var v = btn.getAttribute('data-view');
+        viewRoot.classList.toggle('view-grid', v === 'grid');
+        $$('[data-view]', viewSwitch).forEach(function (b) {
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
+        document.cookie = 'qaphi_view=' + v + '; Path=/; Max-Age=31536000; SameSite=Strict';
+        if (model) {
+          update(model); // las barras de pulsos dependen del ancho
+        }
+      });
+    });
+  }
 
   // Redibujar al cambiar el tamaño (la barra de pulsos y la gráfica dependen
   // del ancho disponible).

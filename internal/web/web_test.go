@@ -951,3 +951,30 @@ func TestCamposComunesNuevos(t *testing.T) {
 		t.Errorf("umbral 0: %d", r.status)
 	}
 }
+
+// TestVistaDeCuadricula: la vista de /home sale de la cookie del visitante;
+// por defecto, lista.
+func TestVistaDeCuadricula(t *testing.T) {
+	e := newEnv(t)
+	e.setup()
+	e.addCheck(model.Check{Name: "Web", Type: "tcp", Interval: time.Minute,
+		Params: map[string]string{"host": "127.0.0.1", "port": "1", "timeout": "1s"}}, state.Observation{OK: true})
+
+	r := e.get("/home")
+	if !strings.Contains(r.body, `data-view-switch hidden`) || strings.Contains(r.body, "view-grid") ||
+		!strings.Contains(r.body, `data-view="list" title="Vista de lista" aria-label="Vista de lista" aria-pressed="true"`) {
+		t.Fatalf("por defecto debe pintarse la lista:\n%s", r.body)
+	}
+	if !strings.Contains(r.body, `class="monitor is-up"`) {
+		t.Error("cada fila debe llevar la clase de su estado")
+	}
+	for _, c := range []struct {
+		val  string
+		grid bool
+	}{{"grid", true}, {"list", false}, {"otra", false}} {
+		r := e.do(http.MethodGet, "/home", nil, map[string]string{"Cookie": viewCookie + "=" + c.val})
+		if got := strings.Contains(r.body, "checks-view view-grid"); got != c.grid {
+			t.Errorf("cookie %q: cuadrícula = %v", c.val, got)
+		}
+	}
+}

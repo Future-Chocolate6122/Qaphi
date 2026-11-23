@@ -7,15 +7,26 @@
 
 {{define "c-home-checks"}}
 {{if .Body.Groups}}
+<div class="view-bar" data-view-switch hidden>
+  <div class="segmented" role="group" aria-label="{{t "home.view"}}">
+    <button type="button" data-view="list" title="{{t "home.view.list"}}" aria-label="{{t "home.view.list"}}" aria-pressed="{{if .Body.Grid}}false{{else}}true{{end}}">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
+    </button>
+    <button type="button" data-view="grid" title="{{t "home.view.grid"}}" aria-label="{{t "home.view.grid"}}" aria-pressed="{{if .Body.Grid}}true{{else}}false{{end}}">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="4.5" width="6" height="6" rx="1.8"/><rect x="13.5" y="4.5" width="6" height="6" rx="1.8"/><rect x="4.5" y="13.5" width="6" height="6" rx="1.8"/><rect x="13.5" y="13.5" width="6" height="6" rx="1.8"/></svg>
+    </button>
+  </div>
+</div>
+<div class="checks-view{{if .Body.Grid}} view-grid{{end}}" data-view-root>
 {{range .Body.Groups}}
 <section class="card group">
   <h2 class="group-name">{{.Name}}</h2>
   <ul class="monitors">
   {{range .Rows}}
-    <li class="monitor" data-id="{{.ID}}">
+    <li class="monitor is-{{.Status}}" data-id="{{.ID}}">
       <a class="monitor-main" href="/check/{{.ID}}">
         <span class="pill pill-{{.UptimeLevel}}" data-field="uptime" title="{{t "uptime.title"}} {{t "uptime.24h"}}">{{.Uptime}}</span>
-        <span class="monitor-name"><strong>{{.Name}}</strong>{{if .Target}}<small class="muted target">{{.Target}}</small>{{end}}</span>
+        <span class="monitor-name"><strong title="{{.Name}}">{{.Name}}</strong>{{if .Target}}<small class="muted target">{{.Target}}</small>{{end}}</span>
       </a>
       <div class="beats" data-beats aria-hidden="true"></div>
       <div class="monitor-meta">
@@ -27,6 +38,7 @@
   </ul>
 </section>
 {{end}}
+</div>
 {{else}}
 <section class="card"><p>{{t "home.empty"}}{{if $.LoggedIn}} <a href="/admin">{{t "home.empty.admin"}}</a>{{end}}</p></section>
 {{end}}
