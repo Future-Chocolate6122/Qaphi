@@ -33,6 +33,7 @@ El usuario es administrador de sistemas. La primera instalación será una NanoP
 - Node.js o npm en el build, y recursos cargados desde internet (CDN).
 - Servir Qaphi en una subruta detrás de un proxy (`https://dominio/qaphi/`): se accede por IP:puerto o por subdominio.
 - Certificados de Let's Encrypt (HTTPS solo con certificado autofirmado).
+- Revisión profesional de las traducciones: alemán y francés se ofrecen tal cual; quien quiera mejorarlas puede hacerlo en un fork o con una contribución.
 
 ---
 

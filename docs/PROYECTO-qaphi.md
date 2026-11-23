@@ -16,7 +16,7 @@ Actúa como desarrollador sénior de Go. Responde en castellano. Identificadores
 - **Instalación y actualización desatendidas, con un solo comando**, conservando los datos.
 
 ## Fuera de alcance
-Windows y macOS, varios usuarios o roles (**un único usuario y contraseña, decisión firme**), sondas distribuidas, métricas del propio equipo y comprobación de unidades systemd, Docker vía socket, Node.js/npm en el build, recursos cargados desde internet (CDN), servir Qaphi en una subruta detrás de un proxy (se accede por IP:puerto o por subdominio) y certificados de Let's Encrypt.
+Windows y macOS, varios usuarios o roles (**un único usuario y contraseña, decisión firme**), sondas distribuidas, métricas del propio equipo y comprobación de unidades systemd, Docker vía socket, Node.js/npm en el build, recursos cargados desde internet (CDN), servir Qaphi en una subruta detrás de un proxy (se accede por IP:puerto o por subdominio), certificados de Let's Encrypt y la revisión profesional de las traducciones (alemán y francés se ofrecen tal cual; quien quiera mejorarlas puede hacerlo en un fork o con una contribución).
 
 ## Stack
 - Go, última versión estable (hoy 1.27, fijada en `go.mod`). Módulo `github.com/future-chocolate6122/qaphi`. Licencia MIT (titular: Future-Chocolate6122).
@@ -116,7 +116,7 @@ Flags con su variable de entorno equivalente: `--listen` / `QAPHI_LISTEN` (recur
 - ICMP: primero socket sin privilegios (`ping_group_range`) y después raw (`CAP_NET_RAW`); si ambos fallan por permisos, estado «sin permisos» con aviso en el log. DNS: A, AAAA, CNAME, MX, TXT y NS, servidor opcional y valor esperado. HTTP: palabra clave presente o ausente (lee como mucho 1 MiB) y aviso de caducidad TLS (14 días por defecto, 0 lo desactiva).
 - Modo público: oculta destinos, mensajes de resultado y errores de incidencias en HTML y JSON; el detalle de cada check también es público.
 - Versiones con etiquetas semver: cada fase cerrada es `v0.N.0`, correcciones `v0.N.x`, y `v1.0.0` al terminar la fase de pulido. El Makefile toma la versión de `git describe`; sin etiqueta exacta es una compilación de desarrollo.
-- **Etiquetas y releases:** las crea el usuario tras fusionar la fase en `main` (`git tag -a vX.Y.Z` sobre el commit de `main`, compilar desde una copia limpia y subir los binarios a GitHub Releases con `SHA256SUMS`). Claude no crea ni sube etiquetas; el usuario avisa cuando existe una.
+- **Etiquetas y releases:** al cerrar una fase se fusiona en `main` y se crea la etiqueta anotada `vX.Y.Z` sobre ese commit (`main` existe desde `v0.3.0`). Claude solo fusiona en `main` y crea o sube etiquetas cuando el usuario lo pide expresamente. Los binarios se compilan desde una copia limpia en la etiqueta y se suben a GitHub Releases con `SHA256SUMS`.
 
 ## Reglas de trabajo
 - Al cerrar cada fase: `go build ./...`, `go vet ./...` y `go test ./...` en verde, tamaño del binario `linux/arm` (`GOARM=7`) y resumen de decisiones. Luego **para y espera**.
