@@ -2,6 +2,7 @@ package install
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"os"
@@ -78,11 +79,20 @@ func (OS) LookupUser(name string) (int, int, bool, error) {
 
 func (OS) Chown(path string, uid, gid int) error { return os.Lchown(path, uid, gid) }
 
+// HTTPStatus solo comprueba que el servicio recién arrancado responde, con
+// una petición del propio equipo a sí mismo que no envía datos. Por eso no
+// valida el certificado: con HTTPS, Qaphi usa uno autofirmado que ningún
+// sistema reconoce.
 func (OS) HTTPStatus(url string) (int, error) {
 	c := &http.Client{
 		Timeout:       3 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: &http.Transport{
+			Proxy:           nil,                                   // siempre directo: es una dirección local
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // ver arriba
+		},
 	}
+	defer c.CloseIdleConnections()
 	res, err := c.Get(url)
 	if err != nil {
 		return 0, err

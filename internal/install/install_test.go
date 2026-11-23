@@ -2,6 +2,8 @@ package install
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -522,5 +524,24 @@ func TestStartedEndpoint(t *testing.T) {
 	}
 	if _, ok := startedEndpoint("nada"); ok {
 		t.Error("sin línea de arranque no debe encontrarse nada")
+	}
+}
+
+// TestHTTPStatusConHTTPS: la comprobación de arranque debe aceptar el
+// certificado autofirmado de Qaphi (antes una actualización de una
+// instalación en HTTPS fallaba y hacía la vuelta atrás).
+func TestHTTPStatusConHTTPS(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	}))
+	defer srv.Close()
+	code, err := OS{}.HTTPStatus(srv.URL + "/")
+	if err != nil || code != http.StatusSeeOther {
+		t.Fatalf("HTTPS autofirmado: código %d, error %v", code, err)
+	}
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer plain.Close()
+	if code, err := (OS{}).HTTPStatus(plain.URL + "/"); err != nil || code != http.StatusOK {
+		t.Fatalf("HTTP: código %d, error %v", code, err)
 	}
 }
