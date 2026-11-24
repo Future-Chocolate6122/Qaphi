@@ -19,9 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/future-chocolate6122/qaphi/internal/auth"
 	"github.com/future-chocolate6122/qaphi/internal/config"
 	"github.com/future-chocolate6122/qaphi/internal/netcfg"
 	"github.com/future-chocolate6122/qaphi/internal/settings"
+	"github.com/future-chocolate6122/qaphi/internal/store"
 	"github.com/future-chocolate6122/qaphi/internal/store/sqlite"
 )
 
@@ -579,6 +581,73 @@ func TestCriterioFase3(t *testing.T) {
 			if strings.Contains(body, leak) {
 				t.Errorf("%s muestra %q en modo público", path, leak)
 			}
+		}
+	}
+}
+
+// TestPuertoTrasReiniciar: una instalación nueva conserva el puerto 9077 tras
+// la configuración inicial y los reinicios (antes pasaba al 8091 de la v0.1.0
+// si nunca se había cambiado la red); una base de datos de la v0.1.0
+// (contraseña, sin red ni idioma) conserva el 8091.
+func TestPuertoTrasReiniciar(t *testing.T) {
+	ctx := context.Background()
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	port := func(dir string) int {
+		t.Helper()
+		a, err := New(ctx, &config.Config{DataDir: dir, FlushInterval: time.Minute}, quiet)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := a.netCfg.Port
+		a.Close()
+		return p
+	}
+	withStore := func(dir string, fn func(store.Store)) {
+		t.Helper()
+		st, err := sqlite.Open(ctx, filepath.Join(dir, DBFileName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fn(st)
+		st.Close()
+	}
+
+	// Instalación nueva: primer arranque, /setup (contraseña e idioma) y
+	// reinicios.
+	dir := t.TempDir()
+	if p := port(dir); p != netcfg.DefaultPort {
+		t.Fatalf("primer arranque: puerto %d", p)
+	}
+	withStore(dir, func(st store.Store) {
+		if err := auth.SetPassword(ctx, st, "una contraseña larga"); err != nil {
+			t.Fatal(err)
+		}
+		st.SetSetting(ctx, settings.KeyLanguage, "es")
+	})
+	for i := 0; i < 2; i++ {
+		if p := port(dir); p != netcfg.DefaultPort {
+			t.Fatalf("reinicio %d tras /setup: puerto %d, se esperaba %d", i+1, p, netcfg.DefaultPort)
+		}
+	}
+
+	// Instalación nueva creada por una versión que no guardaba la red al
+	// arrancar: contraseña e idioma, sin red. También 9077.
+	dir = t.TempDir()
+	withStore(dir, func(st store.Store) {
+		auth.SetPassword(ctx, st, "una contraseña larga")
+		st.SetSetting(ctx, settings.KeyLanguage, "en")
+	})
+	if p := port(dir); p != netcfg.DefaultPort {
+		t.Fatalf("instalación v0.2+ sin red guardada: puerto %d", p)
+	}
+
+	// v0.1.0: contraseña, sin red ni idioma. Conserva el 8091 (también tras
+	// reiniciar, porque queda guardado).
+	dir = t.TempDir()
+	withStore(dir, func(st store.Store) { auth.SetPassword(ctx, st, "una contraseña larga") })
+	for i := 0; i < 2; i++ {
+		if p := port(dir); p != netcfg.LegacyPort {
+			t.Fatalf("v0.1.0, arranque %d: puerto %d, se esperaba %d", i+1, p, netcfg.LegacyPort)
 		}
 	}
 }

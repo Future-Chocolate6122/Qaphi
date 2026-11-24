@@ -89,21 +89,31 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (_ *App, err
 	}
 	a := &App{cfg: cfg, log: log, store: st, sessions: auth.NewSessions(st, nil)}
 
-	// Red. Una instalación que ya tenía contraseña (v0.1.0) y nunca guardó
-	// la configuración de red conserva su puerto 8091.
+	// Red. Una instalación de la v0.1.0 conserva su puerto 8091. Se reconoce
+	// porque tiene contraseña pero ni configuración de red ni idioma: /setup
+	// guarda el idioma desde la v0.2.0. (Mirar solo la red no basta: una
+	// instalación nueva que nunca cambió la red pasaba al 8091 al reiniciar.)
+	// La configuración se guarda en el primer arranque para no tener que
+	// volver a deducirla.
 	_, hasPort, err := st.GetSetting(ctx, netcfg.KeyPort)
 	if err != nil {
 		return nil, err
 	}
-	legacy := admin.HasPassword() && !hasPort
+	_, hasLang, err := st.GetSetting(ctx, settings.KeyLanguage)
+	if err != nil {
+		return nil, err
+	}
+	legacy := admin.HasPassword() && !hasPort && !hasLang
 	if a.netCfg, err = netcfg.Load(ctx, st, legacy); err != nil {
 		return nil, err
 	}
-	if legacy {
+	if !hasPort {
 		if err := netcfg.Save(ctx, st, a.netCfg); err != nil {
 			return nil, err
 		}
-		log.Info("existing installation: keeping port", "port", a.netCfg.Port)
+		if legacy {
+			log.Info("existing installation: keeping port", "port", a.netCfg.Port)
+		}
 	}
 	certs, err := netcfg.LoadCertStore(ctx, st)
 	if err != nil {

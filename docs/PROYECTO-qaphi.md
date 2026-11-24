@@ -99,7 +99,7 @@ Flags con su variable de entorno equivalente: `--listen` / `QAPHI_LISTEN` (recur
 - Instancia única por sistema, autocontenida (bloqueo de SQLite + socket abstracto `@qaphi`).
 - Instalación con `qaphi install` (instalar y actualizar), solo systemd, usuario `qaphi` sin contraseña ni shell, vuelta atrás automática, `uninstall` que conserva datos salvo `--purge`.
 - Ping: `CAP_NET_RAW` concedido en la unit generada; sin `CAP_NET_BIND_SERVICE`.
-- Red: un único puerto (9077 por defecto, ≥ 1024), HTTP o HTTPS autofirmado, cambios con confirmación de 2 min. Las instalaciones de `v0.1.0` que ya existan conservan su puerto 8091 al actualizar.
+- Red: un único puerto (9077 por defecto, ≥ 1024), HTTP o HTTPS autofirmado, cambios con confirmación de 2 min. Las instalaciones de `v0.1.0` que ya existan conservan su puerto 8091 al actualizar; se reconocen porque tienen contraseña pero ni configuración de red ni idioma guardados. La configuración de red se guarda en el primer arranque (hasta `v0.3.1`, una instalación nueva que nunca cambió la red pasaba al 8091 al reiniciar).
 - Idioma, tema y zona horaria: ajustes globales de la instalación, en `/admin`.
 - Autenticación: contraseña de 10 caracteres como mínimo (72 bytes como máximo, límite de bcrypt), bcrypt con coste 10 y comprobaciones serializadas; sesiones de 7 días (ajuste `session.ttl`) guardadas con hash; 5 intentos fallidos en 15 min bloquean la IP 15 min; CSRF con token de sesión (o cookie en login y setup) más comprobación de origen.
 - Planificador: concurrencia 8 por defecto (ajuste `scheduler.concurrency`), margen de 5 s sobre el tiempo máximo antes de abandonar un check, y el intervalo debe superar el tiempo máximo del check.
