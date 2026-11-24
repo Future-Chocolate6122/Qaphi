@@ -3,11 +3,15 @@
 #   make            compila para el sistema actual en bin/
 #   make check      gofmt + go vet + go test
 #   make cross      compila para todas las plataformas objetivo en dist/
+#   make release    cross + SHA256SUMS (p. ej. make release VERSION=v0.3.1)
 #   make size       muestra el tamaño de los binarios de dist/
 #   make clean      borra bin/ y dist/
 #
 # Versiones: se publican con una etiqueta semver, p. ej.
-#   git tag -a v0.2.0 -m "Qaphi v0.2.0" && make cross
+#   git tag -a v0.2.0 -m "Qaphi v0.2.0" && make release
+#
+# Los binarios llevan la versión en el nombre, sin la «v» y con guiones bajos
+# en lugar de puntos: v0.3.1 -> dist/qaphi_0_3_1-linux-amd64.
 #
 # Todos los binarios se compilan sin CGO, con -trimpath y sin símbolos de
 # depuración (-s -w).
@@ -31,14 +35,18 @@ BUILD   := $(GO) build -trimpath -ldflags '$(LDFLAGS)'
 
 export CGO_ENABLED := 0
 
+# Versión en el nombre de los binarios: v0.3.1 -> 0_3_1.
+FILEVER := $(subst .,_,$(patsubst v%,%,$(VERSION)))
+NAME    := $(DIST)/qaphi_$(FILEVER)
+
 # Plataformas objetivo: solo Linux.
 TARGETS := \
-	$(DIST)/qaphi-linux-amd64 \
-	$(DIST)/qaphi-linux-arm64 \
-	$(DIST)/qaphi-linux-armv7 \
-	$(DIST)/qaphi-linux-armv6
+	$(NAME)-linux-amd64 \
+	$(NAME)-linux-arm64 \
+	$(NAME)-linux-armv7 \
+	$(NAME)-linux-armv6
 
-.PHONY: all build check fmt fmt-check vet test cross size clean run $(TARGETS)
+.PHONY: all build check fmt fmt-check vet test cross release size clean run $(TARGETS)
 
 all: build
 
@@ -64,17 +72,23 @@ test:
 
 cross: $(TARGETS)
 
-$(DIST)/qaphi-linux-amd64:
+# release: binarios de todas las plataformas y su SHA256SUMS, listos para
+# subir a GitHub Releases.
+release: cross
+	cd $(DIST) && sha256sum $(notdir $(TARGETS)) > SHA256SUMS_$(FILEVER)
+	@cat $(DIST)/SHA256SUMS_$(FILEVER)
+
+$(NAME)-linux-amd64:
 	GOOS=linux GOARCH=amd64 $(BUILD) -o $@ $(PKG)
 
-$(DIST)/qaphi-linux-arm64:
+$(NAME)-linux-arm64:
 	GOOS=linux GOARCH=arm64 $(BUILD) -o $@ $(PKG)
 
-$(DIST)/qaphi-linux-armv7:
+$(NAME)-linux-armv7:
 	GOOS=linux GOARCH=arm GOARM=7 $(BUILD) -o $@ $(PKG)
 
 # ARMv6 (Raspberry Pi Zero / 1), que no puede ejecutar el binario armv7.
-$(DIST)/qaphi-linux-armv6:
+$(NAME)-linux-armv6:
 	GOOS=linux GOARCH=arm GOARM=6 $(BUILD) -o $@ $(PKG)
 
 size:
