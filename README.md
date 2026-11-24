@@ -74,7 +74,7 @@ sumas de verificación. Todos están en la
 | `qaphi_<versión>-linux-armv6` | Raspberry Pi Zero y Raspberry Pi 1 |
 | `SHA256SUMS_<versión>` | Sumas para comprobar que el fichero ha llegado íntegro |
 
-La versión va sin la «v» y con guiones bajos: la `v0.3.1` es `qaphi_0_3_1-linux-amd64`.
+La versión va sin la «v» y con guiones bajos: la `v0.3.2` es `qaphi_0_3_2-linux-amd64`.
 
 Si no sabe cuál es la suya, `uname -m` lo dice: `x86_64` → amd64, `aarch64` → arm64,
 `armv7l` → armv7, `armv6l` → armv6.
@@ -105,39 +105,39 @@ correcta, para no guardar fechas erróneas.
 ## 3. Instalación
 
 1. Descargue el ejecutable de su arquitectura y el fichero de sumas. Los enlaces de la versión
-   actual (0.3.1) son estos; para otra versión o arquitectura, cambie el número o el final del
+   actual (0.3.2) son estos; para otra versión o arquitectura, cambie el número o el final del
    nombre:
 
    ```bash
-   wget https://github.com/Future-Chocolate6122/Qaphi/releases/download/v0.3.1/qaphi_0_3_1-linux-amd64
+   wget https://github.com/Future-Chocolate6122/Qaphi/releases/download/v0.3.2/qaphi_0_3_2-linux-amd64
    ```
 
    ```bash
-   wget https://github.com/Future-Chocolate6122/Qaphi/releases/download/v0.3.1/SHA256SUMS_0_3_1
+   wget https://github.com/Future-Chocolate6122/Qaphi/releases/download/v0.3.2/SHA256SUMS_0_3_2
    ```
 
    Si el equipo no tiene salida a Internet, descárguelos en su PC y cópielos con `scp`:
 
    ```bash
-   scp qaphi_0_3_1-linux-amd64 SHA256SUMS_0_3_1 usuario@IP_DEL_EQUIPO:
+   scp qaphi_0_3_2-linux-amd64 SHA256SUMS_0_3_2 usuario@IP_DEL_EQUIPO:
    ```
 
 2. Compruebe que ha llegado íntegro (debe decir `OK`):
 
    ```bash
-   sha256sum -c --ignore-missing SHA256SUMS_0_3_1
+   sha256sum -c --ignore-missing SHA256SUMS_0_3_2
    ```
 
 3. Dele permiso de ejecución:
 
    ```bash
-   chmod +x qaphi_0_3_1-linux-amd64
+   chmod +x qaphi_0_3_2-linux-amd64
    ```
 
 4. Instale:
 
    ```bash
-   sudo ./qaphi_0_3_1-linux-amd64 install
+   sudo ./qaphi_0_3_2-linux-amd64 install
    ```
 
    El instalador crea el usuario de sistema `qaphi` (sin contraseña ni shell), copia el programa a
@@ -145,7 +145,7 @@ correcta, para no guardar fechas erróneas.
    responde. Al terminar muestra la dirección y el **token de configuración inicial**:
 
    ```text
-   OK: Qaphi v0.3.1 installed and running.
+   OK: Qaphi v0.3.2 installed and running.
 
      Initial setup:
        Open in your browser: http://192.0.2.10:9077/setup
@@ -374,7 +374,7 @@ Descargue el ejecutable nuevo (pasos 1 a 3 de la [instalación](#3-instalación)
 mismo comando** que la primera vez:
 
 ```bash
-sudo ./qaphi_0_3_1-linux-amd64 install
+sudo ./qaphi_0_3_2-linux-amd64 install
 ```
 
 El instalador detecta la instalación y:
@@ -506,7 +506,7 @@ conservan en las actualizaciones:
 Para probarlo sin instalar, basta con ejecutarlo; guarda los datos en `./data`:
 
 ```bash
-./qaphi_0_3_1-linux-amd64
+./qaphi_0_3_2-linux-amd64
 ```
 
 ---
@@ -534,7 +534,7 @@ Requisitos: Go 1.27 y `make`. Sin CGO: todo compila de forma cruzada desde cualq
 make             # binario para este equipo en bin/
 make check       # gofmt, go vet y tests
 make cross       # las cuatro arquitecturas en dist/
-make release VERSION=v0.3.1   # cross + SHA256SUMS_0_3_1
+make release VERSION=v0.3.2   # cross + SHA256SUMS_0_3_2
 make size        # tamaño de los binarios de dist/
 ```
 

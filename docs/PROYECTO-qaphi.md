@@ -121,6 +121,10 @@ Flags con su variable de entorno equivalente: `--listen` / `QAPHI_LISTEN` (recur
 - Versiones con etiquetas semver: cada fase cerrada es `v0.N.0`, correcciones `v0.N.x`, y `v1.0.0` al terminar la fase de pulido. El Makefile toma la versión de `git describe`; sin etiqueta exacta es una compilación de desarrollo.
 - **Etiquetas y releases:** al cerrar una fase se fusiona en `main` y se crea la etiqueta anotada `vX.Y.Z` sobre ese commit (`main` existe desde `v0.3.0`). Claude solo fusiona en `main` y crea o sube etiquetas cuando el usuario lo pide expresamente. Los binarios se compilan con `make release VERSION=vX.Y.Z` desde una copia limpia en la etiqueta y llevan la versión en el nombre, sin la «v» y con guiones bajos (`v0.3.1` → `qaphi_0_3_1-linux-amd64`, `-linux-arm64`, `-linux-armv7`, `-linux-armv6`), junto a su `SHA256SUMS_0_3_1`. Se suben a GitHub Releases.
 
+## Versiones publicadas
+- `v0.3.1` (24/11/2026): cuadrícula en `/home`, filtros de la página pública, temas Océano y Arena, logotipo y favicon de estado, arreglo del instalador en HTTPS. Lleva el fallo del puerto 8091 tras reiniciar una instalación nueva.
+- `v0.3.2`: corrige ese fallo; binarios con la versión en el nombre (`qaphi_0_3_2-linux-*`) y README con capturas (`docs/img`) y logotipo (`docs/brand`).
+
 ## Reglas de trabajo
 - Al cerrar cada fase: `go build ./...`, `go vet ./...` y `go test ./...` en verde, tamaño del binario `linux/arm` (`GOARM=7`) y resumen de decisiones. Luego **para y espera**.
 - No adelantes funciones de fases posteriores ni añadas dependencias (Go o JavaScript) sin consultar.
